@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="MC3D_Structured_Solver" />
+		<Option pch_mode="2" />
+		<Option compiler="ifclin" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/MC3D_Structured_Solver" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="ifclin" />
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/MC3D_Structured_Solver" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="ifclin" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+			</Target>
+		</Build>
+		<Unit filename="MC3D_S_M_Advance.f90" />
+		<Unit filename="MC3D_S_M_Heatcontrol.f90" />
+		<Unit filename="MC3D_S_M_IO.f90" />
+		<Unit filename="MC3D_S_M_Main.f90" />
+		<Unit filename="MC3D_S_M_Routines.f90" />
+		<Unit filename="MC3D_S_M_Variables.f90" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
