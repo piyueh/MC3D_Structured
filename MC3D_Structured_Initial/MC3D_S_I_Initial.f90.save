@@ -257,7 +257,7 @@ END SUBROUTINE properties
 SUBROUTINE output
 USE mod_VARIABLES
 IMPLICIT NONE
-
+    
     WRITE(*, *) "Start to Output..."
     OPEN(LW1, FILE=casename(1:LEN_TRIM(casename))//'_initial.txt')
     WRITE(*, *) "   dt..."
