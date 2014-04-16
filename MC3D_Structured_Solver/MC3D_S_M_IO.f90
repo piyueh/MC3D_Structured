@@ -49,33 +49,60 @@ CONTAINS
     ! DPP=specular fraction of internal interfaces
     ! DPPB=specular fraction of computational boundaries
 
+        WRITE(*, *) "Start to Read Initialization Data..."
+
         OPEN(LR, FILE = inputfilename)
 
-        READ(LR, *) bundle,dt,time0,iNcell
-        READ(LR, *) dLdomain,dLclen,option,DPP,DPP
+        WRITE(*, *) "   Reading dt..."
+        READ(LR, *) dt
+        WRITE(*, *) "   Reading iter0..."
+        READ(LR, *) iter0
+        WRITE(*, *) "   Reading dLdomain..."
+        READ(LR, *) dLdomain
+        WRITE(*, *) "   Reading iNcell..."
+        READ(LR, *) iNcell
+        WRITE(*, *) "   Reading dLclen..."
+        READ(LR, *) dLclen
+        WRITE(*, *) "   Reading bundle..."
+        READ(LR, *) bundle
+        WRITE(*, *) "   Reading iNprop & iNph..."
         READ(LR, *) iNprop,iNph
-
-        dArea = dLclen(2) * dLclen(3)
-        dVolume = dLclen(1) * dArea
-        dEheatflux0 = dEheatflux0 * dArea * dt * DBLE(iNcell(2) * iNcell(3))
-        ! meV/(ps.nm^2)*(nm^2)*(ps)=meV
-!--------------------------
-
+        WRITE(*, *) "   Reading iNmakeup..."
+        READ(LR, *) iNmakeup
 
         ALLOCATE( iCmat(iNcell(1), iNcell(2), iNcell(3)) )
+        WRITE(*, *) "   Reading iCmat..."
+        READ(LR, *) iCmat
+
+        ALLOCATE( phn(iNprop, iNph) )
+        WRITE(*, *) "   Reading phn..."
+        READ(LR, *) phn
+
+        ALLOCATE( dEdiff(iNcell(1), iNcell(2), iNcell(3)) )
+        WRITE(*, *) "   Reading dEdiff..."
+        READ(LR, *) dEdiff
+
+        ALLOCATE( dPpool(6, iNmakeup, iNcell(2), iNcell(3), 2) )
+        WRITE(*, *) "   Reading dPpool..."
+        READ(LR, *) dPpool
+
+        ALLOCATE( mlost(iNcell(2), iNcell(3), 2) )
+        WRITE(*, *) "   Reading mlost..."
+        READ(LR, *) mlost
+
+        CLOSE(LR)
+
         ALLOCATE( iNnumcell(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( iNbgcell(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( dEcell(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( dTemp(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( dEunit(iNcell(1), iNcell(2), iNcell(3)) )
-        ALLOCATE( dEdiff(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( dVunit(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( MFP(iNcell(1), iNcell(2), iNcell(3)) )
-        ALLOCATE( phn(iNprop, iNph) )
 
-        READ(LR,*) iCmat
-        READ(LR,*) phn
-        READ(LR,*) dEdiff
+
+        dArea = dLclen(2) * dLclen(3)
+        dVolume = dLclen(1) * dArea
 
         IF (option(1).eq.3) THEN
             ALLOCATE( dElost(iNcell(2), iNcell(3), 2) )
@@ -86,34 +113,46 @@ CONTAINS
             ALLOCATE( qctrl0(iNcell(2), iNcell(3)) )
             ALLOCATE( dEheatflux(iNcell(2), iNcell(3), 2) )
             ALLOCATE( qctrl(iNcell(2), iNcell(3)) )
-
-            IF (WAY_DIR.eq.1) THEN
-                READ(LR,*) iNmakeup
-                ALLOCATE( mlost(iNcell(2), iNcell(3), 2) )
-                ALLOCATE( dPpool(6, iNmakeup, iNcell(2), iNcell(3), 2) )
-                mlost=0
-                dPpool=0
-                READ(LR,*) dPpool
-            ENDIF
-
-            IF (WAY_HEAT.eq.1) THEN !1: phonons injected at specified heat flux
+            
+            dElost = 0d0
+            
+            SELECTCASE(WAY_HEAT)
+            CASE(1)
+            ! phonons injected at specified heat flux
+            !==========================================================
                 sumQ=0
                 qctrl0=0
                 READ(LR,*) sumQ
                 READ(LR,*) qctrl0
                 read(LR,*) abc
                 qctrl=qctrl0/sumQ
-            ENDIF
+            CASE(2)
+            ! phonons injected at specified temperatures
+            !==========================================================
+                dEheatflux(:,:,1)=TEMP_HEAT(1)
+                dEheatflux(:,:,2)=TEMP_HEAT(2)
+
+                Call proc_BC( dEheatflux(1:iNcell(2), 1:iNcell(3), 1), &
+                                        dEheatflux(1:iNcell(2), 1:iNcell(3), 2) )
+
+                DO k = 1, iNcell(3)
+                    DO j = 1, iNcell(2)
+                        CALL proc_energy( iCmat(1,j,k), TEMP_HEAT(1), tmp)
+                        dEheatflux(j, k, 1) = tmp * dVinject(j, k, iCmat(1,j,k), 1)
+                        CALL proc_energy( iCmat(iNcell(1), j, k), TEMP_HEAT(2), tmp)
+                        dEheatflux(j, k, 2) = tmp * dVinject(j, k, iCmat(iNcell(1), j, k), 2)
+                    ENDDO
+                ENDDO
+                dEheatflux = dEheatflux / 4d0 * dArea * dt
+                ! dEheatflux:
+                !       The energy that should be injected at each time step
+                !       and each boundary element.
+            ENDSELECT
+            !==========================================================
         ENDIF
-
-        dEdiff=0
-
-
 
         CALL proc_reorder
         CALL cellinfo
-
-        CLOSE(LR)
 
     END SUBROUTINE initialize
 !============================================================================
@@ -138,36 +177,5 @@ IF (WAY_HEAT.eq.1) THEN
 ENDIF
 
 END SUBROUTINE restart
-!============================================================================
-SUBROUTINE output_pure(iter,n1,n2,noutput)
-    IMPLICIT NONE
-    INTEGER*4::i,j,k,iter,N,n1,n2,noutput
-    REAL*8:: Tmp,tot
-    REAL*8,ALLOCATABLE :: Tzoft(:,:,:)
-
-    IF (n1.eq.1) THEN
-        ALLOCATE( Tzoft(iNcell(1),iNcell(2),iNcell(3)) )
-        Tzoft = 0
-    ENDIF
-
-    DO k=1,iNcell(3)
-        DO j=1,iNcell(2)
-            DO i=1,iNcell(1)
-                tot=tot+dEcell(i,j,k)
-                CALL Etable(iCmat(i,j,k),1,dEcell(i,j,k),Tmp)
-                IF (n1.eq.1) Tzoft(i,j,k)=Tmp
-                IF (n2.eq.1) Tz(i,j,k)=Tz(i,j,k)+Tmp
-            ENDDO
-        ENDDO
-    ENDDO
-
-    IF (n1.eq.1) THEN
-        WRITE(LW1,*) time,iNcell,dLclen
-        WRITE(LW1,*) Tzoft
-        DEALLOCATE( Tzoft )
-        n1=0
-    ENDIF
-
-END SUBROUTINE output_pure
 !============================================================================
 END MODULE mod_IO

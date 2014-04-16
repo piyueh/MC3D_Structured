@@ -71,7 +71,7 @@ IMPLICIT NONE
     DEALLOCATE( dEdiff )
     DEALLOCATE( iNnumcell )
 
-    DEALLOCATE( Ge_table, Si_Table, phn )
+    DEALLOCATE( Ge_table, Si_Table, phn, dPpool, mlost )
     WRITE(*, *) 'Deallocating Memory Has Finished.'
 
 END SUBROUTINE Dealloc_variables
@@ -196,7 +196,9 @@ REAL*8,ALLOCATABLE::rannum(:,:)
 
     iNmakeup = MAXVAL( INT( N0 * dVolume / bundle + 0.5d0 ) ) * 5
     ALLOCATE( dPpool(6, iNmakeup, iNcell(2), iNcell(3), 2) )
-    dPpool=0d0
+    ALLOCATE( mlost(iNcell(2), iNcell(3), 2) )
+    dPpool = 0d0
+    mlost = 0
 
     iNph=0
     DO k = 1, iNcell(3)
@@ -262,6 +264,8 @@ IMPLICIT NONE
     OPEN(LW1, FILE=casename(1:LEN_TRIM(casename))//'_initial.txt')
     WRITE(*, *) "   dt..."
     WRITE(LW1, *) dt
+    WRITE(*, *) "   iter0..."
+    WRITE(LW1, *) 0
     WRITE(*, *) "   dLdomain..."
     WRITE(LW1, *) dLdomain
     WRITE(*, *) "   iNcell..."
@@ -282,6 +286,8 @@ IMPLICIT NONE
     WRITE(LW1, *) dEdiff
     WRITE(*, *) "   dPpool..."
     WRITE(LW1, *) dPpool
+    WRITE(*, *) "   mlost..."
+    WRITE(LW1, *) mlost
     CLOSE(LW1)
     WRITE(*, *) "Finished."
 

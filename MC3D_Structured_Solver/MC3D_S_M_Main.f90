@@ -11,70 +11,120 @@ USE mod_ROUTINES
 USE mod_ADVANCE
 USE mod_IO
 IMPLICIT NONE
-INTEGER*4::iter,iter0,iterations,n1,n2,noutput,nsteady,j,k,m,s
-REAL*8:: tmp
+INTEGER*4:: iter,iter0,iterations,n1,n2,noutput,nsteady,j,k,m,s
+INTEGER*4:: NorR
+LOGICAL:: TF
 
+    CALL RANDOM_SEED()
 
-    inputfilename='initial.txt'
-    restartfilename='restart.txt'
+    WRITE(*,*) 'INPUT THE CASE NAME(NO .''TXT'', NO ''_GRIDFILE''): '
+    READ(*,"(A72)") casename
+    inputfilename = casename(1:LEN_TRIM(casename))//'_initial.txt'
+    restartfilename = casename(1:LEN_TRIM(casename))//'_restart.txt'
+    logfilename = casename(1:LEN_TRIM(casename))//'_log.txt'
+
     iterations=400000
     noutput=10000000
     nsteady=5000
     iter0=5000
-    cba=1
 
-    IF (option(1).eq.3) THEN !option=3的話是熱流控制邊界條件
-        WRITE(*, *) 'Way to inject heat phonons:'
-        WRITE(*, *) '    1: phonons injected at specified heat flux'
-        WRITE(*, *) '    2: phonons injected at specified temperatures'
-        WRITE(*, *) 'Enter the # of option and press <ENTER>: '
-        READ(*, *) WAY_HEAT
+    WRITE(*, *) "Enter 1 for a New Simulation or 2 to Restart a Existing Simulation:"
+    READ(*, *) NorR
 
-        IF (WAY_HEAT.eq.2) THEN
-            WRITE(*, *) 'Then, the specified temperatures (K): TL,TR = '
-            READ(*, *) TEMP_HEAT
+    SELECTCASE(NorR)
+    CASE(1)
+        OPEN(UNIT=LW1, FILE=logfilename)
+
+        WRITE(*, *) "Enter the type of BCx, BCy, BCz in Each Direction:"
+        WRITE(*, *) "   1: partially specularly and partially diffusely reflected"
+        WRITE(*, *) "   2: periodic boundary condition"
+        WRITE(*, *) "   3: leaving and being saved for heat control"
+        READ(*, *) option
+
+        WRITE(LW1, *) option
+
+        WRITE(*, *) "Enter the Specularity of Domain Boundaries: "
+        READ(*, *) dPPB
+        WRITE(*, *) "Enter the Specularity of Interface: "
+        READ(*, *) dPP
+
+        WRITE(LW1, *) dPPB, dPP
+
+        IF ((option(2).eq.3).OR.(option(3).eq.3)) THEN
+            WRITE(*, *) "BCy = 3 or BCz = 3 is NOT Supported in This Version."
+            WRITE(*, *) "The Program is Going to Shut Down in 5 Seconds."
+            CALL SLEEP(5)
+            STOP
         ENDIF
 
-        WRITE(*, *) 'Way to assign the directions of incident phonons'
-        WRITE(*, *) '    1: periodically assigned '
-        WRITE(*, *) '    2: randomly assigned'
-        WRITE(*, *) 'Enter the # of option and press <ENTER>: '
-        READ(*, *) WAY_DIR
-    ENDIF
+        IF (option(1).eq.3) THEN
+
+            WRITE(*, *) 'Way to inject heat phonons:'
+            WRITE(*, *) '    1: phonons injected at specified heat flux (Discarded in This Version)'
+            WRITE(*, *) '    2: phonons injected at specified temperatures'
+            WRITE(*, *) 'Enter the # of option and press <ENTER>: '
+            READ(*, *) WAY_HEAT
+
+            WRITE(LW1, *) WAY_HEAT
+
+            IF (WAY_HEAT.eq.1) THEN
+                !WRITE(*, *) "Then, the specific heat flux (meV / nm^2-ps) = "
+                !READ(*, *) dEheatflux0
+                !WRITE(LW1, *) dEheatflux0
+                !dEheatflux0 = dEheatflux0 * dArea * dt * DBLE(iNcell(2) * iNcell(3))
+                WRITE(*, *) "Phonons Injected at Specified Heat Flux is Discarded in This Version."
+                WRITE(*, *) "The Program is Going to Shut Down in 5 Seconds."
+                CALL SLEEP(5)
+                STOP
+            ELSEIF (WAY_HEAT.eq.2) THEN
+                WRITE(*, *) 'Then, the specified temperatures (K): TL,TR = '
+                READ(*, *) TEMP_HEAT
+                WRITE(LW1, *) TEMP_HEAT
+            ELSE
+                WRITE(*, *) 'Wrong Option!'
+                WRITE(*, *) "The Program is Going to Shut Down in 5 Seconds."
+                CALL SLEEP(5)
+                STOP
+            ENDIF
+
+            WRITE(*, *) 'Way to assign the directions of incident phonons'
+            WRITE(*, *) '    1: periodically assigned '
+            WRITE(*, *) '    2: randomly assigned'
+            WRITE(*, *) 'Enter the # of option and press <ENTER>: '
+            READ(*, *) WAY_DIR
+            WRITE(LW1, *) WAY_DIR
+        ENDIF
+
+        CLOSE(LW1)
+
+    CASE(2)
+
+        OPEN(UNIT=LR, FILE=logfilename)
+        READ(LR, *) option
+        READ(LR, *) dPPB, dPP
+        IF (option(1).eq.3) THEN
+            READ(LR, *) WAY_HEAT
+            READ(LR, *) TEMP_HEAT
+            READ(LR, *) WAY_DIR
+        ENDIF
+        CLOSE(LR)
+
+    CASE DEFAULT
+
+        WRITE(*, *) 'Wrong Option!'
+        WRITE(*, *) "The Program is Going to Shut Down in 5 Seconds."
+        CALL SLEEP(5)
+        STOP
+
+    ENDSELECT
 
     ! Read Material Property Table
     CALL readtable
 
-    !Initialization
+    ! Initialization
     CALL initialize
-!-------------------------------------------------------------
-    CALL RANDOM_SEED()
 
-    !----------------------------------------------------------------------------------------------------
-    IF (WAY_HEAT.eq.2) THEN !2: phonons injected at specified temperatures
-	    dEheatflux(:,:,1)=TEMP_HEAT(1)
-	    dEheatflux(:,:,2)=TEMP_HEAT(2)
-
-	    Call proc_BC(dEheatflux(1:iNcell(2),1:iNcell(3),1),dEheatflux(1:iNcell(2),1:iNcell(3),2))!得到邊界入射聲子性質
-
-	    DO k=1,iNcell(3)
-	        DO j=1,iNcell(2)
-
-	            CALL proc_energy(iCmat(1,j,k),TEMP_HEAT(1),tmp) !此行tmp:TEMP_HEAT(1)對應的單位體積能量
-
-	            dEheatflux(j,k,1)=tmp*dVinject(j,k,iCmat(1,j,k),1)
-
-		        CALL proc_energy(iCmat(iNcell(1),j,k),TEMP_HEAT(2),tmp) !此行tmp:TEMP_HEAT(2)對應的單位體積能量
-
-	            dEheatflux(j,k,2)=tmp*dVinject(j,k,iCmat(iNcell(1),j,k),2)
-	        ENDDO
-	    ENDDO
-	    dEheatflux=dEheatflux/4d0*dArea*dt  !每個網格每個步進時間最後應該要入射或射出的能量
-    ENDIF
-
-    dElost=0
-
-    WRITE(*, *) 'PREPROCESSING DONE'
+    WRITE(*, *) 'PREPROCESSING HAS FINISHED!!'
 !----------------------------------------------------------------------------------------------------
 n1=0
 IF (outputfilename1.ne.'-') THEN
@@ -142,8 +192,6 @@ DO iter=0,iterations
 	    n2=1
 	    qflow=0
     ENDIF !4
-
-    CALL random_seed()
 
     CALL advance(iter,iter0)
     time=time+dt

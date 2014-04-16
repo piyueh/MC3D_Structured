@@ -160,29 +160,30 @@ DEALLOCATE( phnheat,cellheat,im )
 
 END SUBROUTINE proc_heatcontrol
 !============================================================================
-SUBROUTINE proc_BC(TL,TR)
-IMPLICIT NONE
-INTEGER*4:: j,k,m
-REAL*8:: TL(iNcell(2), iNcell(3))
-REAL*8:: TR(iNcell(2), iNcell(3))
-REAL*8:: dNum,dUL,dUR
+    SUBROUTINE proc_BC(TL,TR)
+    IMPLICIT NONE
+    INTEGER*4:: j,k,m
+    REAL*8:: TL(iNcell(2), iNcell(3))
+    REAL*8:: TR(iNcell(2), iNcell(3))
+    REAL*8:: dNum,dUL,dUR
+    ! Calculate the properties of phonons injected from heat contral boundary
+    
+        DO m=1,2
+            DO k=1,iNcell(3)
+                DO j=1,iNcell(2)
+                    CALL proc_energy( m, TL(j, k), dUL )
+                    CALL Etable( m, 4, dUL, dVinject(j, k, m, 1) )
+                    CALL Etable( m, 2, dUL, dNum )
+                    dEinject(j, k, m, 1) = dUL / dNum * bundle(m)
 
-    DO m=1,2
-        DO k=1,iNcell(3)
-            DO j=1,iNcell(2)
-                CALL proc_energy(m,TL(j,k),dUL)
-                CALL Etable(m,4,dUL,dVinject(j,k,m,1))
-                CALL Etable(m,2,dUL,dNum)
-                dEinject(j,k,m,1)=dUL/dNum*bundle(m)
-
-                CALL proc_energy(m,TR(j,k),dUR)
-                CALL Etable(m,4,dUR,dVinject(j,k,m,2))
-                CALL Etable(m,2,dUR,dNum)
-                dEinject(j,k,m,2)=dUR/dNum*bundle(m)
+                    CALL proc_energy( m, TR(j, k), dUR)
+                    CALL Etable( m, 4, dUR, dVinject(j, k, m, 2) )
+                    CALL Etable( m, 2, dUR, dNum )
+                    dEinject(j, k, m, 2) = dUR / dNum * bundle(m)
+                ENDDO
             ENDDO
         ENDDO
-    ENDDO
 
-END SUBROUTINE proc_BC
+    END SUBROUTINE proc_BC
 !============================================================================
 END MODULE mod_heatcontrol
