@@ -232,7 +232,7 @@ REAL*8,ALLOCATABLE::rannum(:,:)
                 phn(2, iNph+1:iNph+m) = ( DBLE(j-1) + rannum(:, 2) ) * dLclen(2)
                 phn(3, iNph+1:iNph+m) = ( DBLE(k-1) + rannum(:, 3) ) * dLclen(3)
                 phn(4, iNph+1:iNph+m) = 2d0 * rannum(:, 4)-1d0
-                phn(5, iNph+1:iNph+m) = M_PI_2*rannum(:, 5)
+                phn(5, iNph+1:iNph+m) = M_PI_2 * rannum(:, 5)
                 iNph=iNph+m
                 DEALLOCATE( rannum )
             ENDDO

@@ -67,7 +67,7 @@ REAL*8, ALLOCATABLE:: dEheatflux(:, :, :)
 ! phonon information
 !======================================================================
 ! 3D simulation:: iNprop=8
-! 1: x 2: y 3: z  4: theta 5: phi 6: energy
+! 1: x 2: y 3: z  4: cos(theta) 5: phi 6: energy
 ! 7: velocity 8: energy_material
 !----------------------------------------------------------------------
 INTEGER*4:: iNph, newiNph, iNprop, iNmakeup !iNmakeup is pool size
