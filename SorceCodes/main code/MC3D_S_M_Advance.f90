@@ -1,88 +1,124 @@
-!****************************************************************************
-!   HEADING: MC3D ADVANCE MODULE
-!   AUTHOR: MJ Huang
+!**********************************************************************
+!   HEADING: MC3D - Structured Grids:
+!                                 routines related to phonon movements
+!   AUTHOR: MJ Huang, PY Chuang
 !   PURPOSE: This module time marches the simulation.
-!   DATE : 2009.7.10
-!****************************************************************************
+!   DATE : 07/10/2009
+!**********************************************************************
 MODULE mod_ADVANCE
 USE mod_VARIABLES
 USE mod_ROUTINES
 IMPLICIT NONE
-!****************************************************************************
 CONTAINS
 !============================================================================
-SUBROUTINE proc_advection(i0,j0,k0,cellbdy0,N,ph,nc) 
+    SUBROUTINE advance
+    USE mod_heatcontrol
     IMPLICIT NONE
-    INTEGER*4::i0,j0,k0,hit,true,nc
-    INTEGER*4::N,m,i,phcell(3),face(3),idxt(1)
-    REAL*8:: cellbdy0(2,3), ph(iNprop,N)
-    REAL*8::dtremain,dtused
-    REAL*8,ALLOCATABLE:: cellbdy(:,:),vel(:),ds(:)
-    !phcell¡GÁn¤l©Ò¦bºô®æ
-    !-----------------------------------
-    ALLOCATE( cellbdy(2,3),vel(3),ds(3) )
-    !-----------------------------------
-    DO m=1,N 
-        cellbdy=cellbdy0 !SO¦¹³Bªºcellbdy·|µ¥©ó¥~¬Éªºcellbdy (in main code¸Ìªº°Æµ{¦¡advance)
-        phcell(1)=i0
-        phcell(2)=j0
-        phcell(3)=k0
-        vel(3)=ph(7,m)*DSQRT(1d0-ph(4,m)**2)  ! Vg*sin(theta)
-        vel(1)=ph(7,m)*ph(4,m) ! Vg*cos(theta)
-        vel(2)=vel(3)*DCOS(ph(5,m))  ! Vg*sin(theta)*cos(phi)
-        vel(3)=vel(3)*DSIN(ph(5,m))  ! Vg*sin(theta)*sin(phi)
+    INTEGER*4:: i, j, k, bg, ed
+    REAL*8:: cellbdy(2, 3)
 
-        IF (nc.eq.1) THEN !so nc=1ªí¥Ü¬OÁn¤l¹B°Ê¨BÆJ¡Anc=-1ªí¥Ü¬O¼ö¬y±±¨î¨BÆJ??
-            dtremain = dt
-        ELSE 
-            dtremain = dtheat(m)
-        ENDIF
-        
-        !-------------------------------------------
-        DO WHILE (dtremain.gt.0d0)	
-	        DO i=1,3
-	            IF (vel(i).gt.0d0) THEN
-	                ds(i)=cellbdy(2,i)
-			        face(i)=1
-                ELSE
-		            ds(i)=cellbdy(1,i)
-			        face(i)=-1
-                ENDIF
-	        ENDDO
-	        ds=DABS((ds-ph(1:3,m))/vel) !²{¦bdsÅÜ¦¨²¾°Ê¨ì¸I¤Wºô®æÃä¬É©Ò»İªº®É¶¡
-	        idxt=MINLOC(ds) !¶Ç¦^¤T­Ó¤è¦V¤¤¡A³Ì¥ı¸I¤W­ş­Ó¤è¦Vªººô®æÃä¬É¡Aidxt=1 or 2 or 3
-	        hit=idxt(1)
-            dtused=MIN(ds(hit),dtremain) !¤ñ¸û³Ñ¾l®É¶¡¬O§_¨¬°÷Án¤l¸I¤Wºô®æÃä¬É
-            !-------------------------------------------
-            true = 0
-	        ph(1:3,m)=ph(1:3,m)+dtused*vel ! movement
+        DO k = 1, iNcell(3)
+            DO j = 1, iNcell(2)
+                DO i = 1, iNcell(1)
+                    cellbdy(1, 1) = dLclen(1) * DBLE(i-1)
+                    cellbdy(2, 1) = dLclen(1) * DBLE(i)
+                    cellbdy(1, 2) = dLclen(2) * DBLE(j-1)
+                    cellbdy(2, 2) = dLclen(2) * DBLE(j)
+                    cellbdy(1, 3) = dLclen(3) * DBLE(k-1)
+                    cellbdy(2, 3) = dLclen(3) * DBLE(k)
+                    bg = iNbgcell(i, j, k) + 1
+                    ed = iNbgcell(i, j, k) + iNnumcell(i, j, k)
+                    CALL proc_advection(i, j, k, cellbdy, iNnumcell(i, j, k), &
+                                        phn(1:iNprop, bg:ed), 1)
+                ENDDO
+            ENDDO
+        ENDDO
+        ! So far, the movement, boundary scattering, and
+        ! interfacial scattering procedures have been finished.
 
-            CALL proc_intrinsicscattering(phcell,ph(1:iNprop,m),dtused,true) !§PÂ_·|¤£·|µo¥Í¥»½è´²®g¡A­Y¦³´²®g¡A·|§ïÅÜÁn¤l©Ê½è
-	        IF (true.eq.1) THEN !true=1ªí¥Ü¦³¥»½è´²®g
+        IF (option(1).eq.3) CALL proc_heatcontrol
+
+        !-------build cell information for future use
+        CALL proc_reorder
+        CALL proc_createdelete
+        CALL cellinfo
+
+    END SUBROUTINE advance
+!============================================================================
+    SUBROUTINE proc_advection(i0, j0, k0, cellbdy0, N, ph, nc)
+    IMPLICIT NONE
+    INTEGER*4:: i0, j0, k0, hit, true, nc
+    INTEGER*4:: N, m, i, phcell(3), face(3), idxt(1)
+    REAL*8:: cellbdy0(2, 3), ph(iNprop, N)
+    REAL*8:: dtremain, dtused
+    REAL*8:: cellbdy(2, 3), vel(3), ds(3)
+    ! i0, j0, k0: the initial cell index of the phonons
+    ! phcell: the cell index follows with the target phonon
+    !------------------------------------------------------------------------
+
+        DO m=1,N
+
+            cellbdy = cellbdy0
+            phcell = (/i0, j0, k0/)
+            vel(3) = ph(7, m) * DSQRT( 1d0 - ph(4, m)**2 )  ! Vg*sin(theta)
+            vel(1) = ph(7, m) * ph(4, m) ! Vg*cos(theta)
+            vel(2) = vel(3) * DCOS( ph(5, m) )  ! Vg*sin(theta)*cos(phi)
+            vel(3) = vel(3) * DSIN( ph(5, m) )  ! Vg*sin(theta)*sin(phi)
+
+            IF (nc.eq.1) THEN
+                dtremain = dt
+            ELSE
+                dtremain = dtheat(m)
+            ENDIF
+
+            DO WHILE ( dtremain.gt.0d0 )
+
+                DO i = 1, 3
+                    IF ( vel(i).gt.0d0 ) THEN
+                        ds(i) = cellbdy(2, i)
+                        face(i) = 1
+                    ELSE
+                        ds(i) = cellbdy(1, i)
+                        face(i) = -1
+                    ENDIF
+                ENDDO
+
+                ds = DABS( ( ds - ph(1:3,m) ) / vel ) ! ds
+                idxt = MINLOC( ds ) !å‚³å›ä¸‰å€‹æ–¹å‘ä¸­ï¼Œæœ€å…ˆç¢°ä¸Šå“ªå€‹æ–¹å‘çš„ç¶²æ ¼é‚Šç•Œï¼Œidxt=1 or 2 or 3
+	            hit = idxt(1)
+                dtused = MIN( ds(hit), dtremain ) !æ¯”è¼ƒå‰©é¤˜æ™‚é–“æ˜¯å¦è¶³å¤ è²å­ç¢°ä¸Šç¶²æ ¼é‚Šç•Œ
+
+                ph(1:3, m) = ph(1:3, m) + dtused * vel ! move to the new position
+
+                ! åˆ¤æ–·æœƒä¸æœƒç™¼ç”Ÿæœ¬è³ªæ•£å°„ï¼Œè‹¥æœ‰æ•£å°„ï¼Œæœƒæ”¹è®Šè²å­æ€§è³ª
+                CALL proc_intrinsicscattering(phcell, ph(1:iNprop, m), dtused, true)
+
+
+	        IF (true.eq.1) THEN !true=1è¡¨ç¤ºæœ‰æœ¬è³ªæ•£å°„
 	            vel(3)=ph(7,m)*DSQRT(1d0-ph(4,m)**2)
 	            vel(1)=ph(7,m)*ph(4,m)
                 vel(2)=vel(3)*DCOS(ph(5,m))
 		        vel(3)=vel(3)*DSIN(ph(5,m))
             ENDIF
             !-------------------------------------------
-            IF (dtused.ge.dtremain) THEN  
-	            ! IF (ds(hit).ge.dtremain) THEN  
+            IF (dtused.ge.dtremain) THEN
+	            ! IF (ds(hit).ge.dtremain) THEN
 	            ! if (ds(hit).eq.dtremain) then
 	            ! write(999,*) '1'
 	            ! endif
-          
+
 		        dtremain=0
 	        ELSE
 	            dtremain = dtremain-dtused
 		        true=0
-		        
-		        IF (face(hit)*vel(hit).gt.0) THEN !face(hit)*vel(hit)¤@©w¤j©ó¹sªü???¤£¤@©w!!¦]¬°µo¥Í¹L´²®g¤F¡A¥i¯àvel(hit)§ïÅÜ¤F!©Ò¥H¦¹¦æ¬O¦b§PÂ_¸g´²®g«á¬O§_ÁÙ·|¬ï³zºô®æÃä¬É
-		            CALL proc_outdomain(phcell,cellbdy,hit,face(hit),ph(1:iNprop,m),dtremain,true) 
+
+		        IF (face(hit)*vel(hit).gt.0) THEN !face(hit)*vel(hit)ä¸€å®šå¤§æ–¼é›¶é˜¿???ä¸ä¸€å®š!!å› ç‚ºç™¼ç”Ÿéæ•£å°„äº†ï¼Œå¯èƒ½vel(hit)æ”¹è®Šäº†!æ‰€ä»¥æ­¤è¡Œæ˜¯åœ¨åˆ¤æ–·ç¶“æ•£å°„å¾Œæ˜¯å¦é‚„æœƒç©¿é€ç¶²æ ¼é‚Šç•Œ
+		            CALL proc_outdomain(phcell,cellbdy,hit,face(hit),ph(1:iNprop,m),dtremain,true)
 		            !-----check and handle if this phonon hits the computational domain
 		            IF (true.eq.0) CALL proc_transmissivity(phcell,cellbdy,hit,face(hit),ph(1:iNprop,m),vel,true)
 	            ENDIF
-	            
-		        IF (true.eq.1) THEN !­Y¦³µo¥ÍÃä¬É¤Ï®g¡A©Î¤¶­±Ãè/¶Ã¬ï³zor¤Ï®g«htrue¬°1¡A¥B¦bproc_outdomain»Pproc_transmissivity¥u¨M©w¤è¦V©M¸s³t¡A¦Ó¨S¨M©w³t«×¤À¶q
+
+		        IF (true.eq.1) THEN !è‹¥æœ‰ç™¼ç”Ÿé‚Šç•Œåå°„ï¼Œæˆ–ä»‹é¢é¡/äº‚ç©¿é€oråå°„å‰‡trueç‚º1ï¼Œä¸”åœ¨proc_outdomainèˆ‡proc_transmissivityåªæ±ºå®šæ–¹å‘å’Œç¾¤é€Ÿï¼Œè€Œæ²’æ±ºå®šé€Ÿåº¦åˆ†é‡
 	                vel(3)=ph(7,m)*DSQRT(1d0-ph(4,m)**2)
 	                vel(1)=ph(7,m)*ph(4,m)
                     vel(2)=vel(3)*DCOS(ph(5,m))
@@ -91,90 +127,105 @@ SUBROUTINE proc_advection(i0,j0,k0,cellbdy0,N,ph,nc)
 	        ENDIF
         ENDDO
     ENDDO
- 
+
     DEALLOCATE( cellbdy,vel,ds )
 
 END SUBROUTINE proc_advection
+!======================================================================
+!======================================================================
+    SUBROUTINE proc_intrinsicscattering( phcell, phm, dt1, true )
+    IMPLICIT NONE
+    INTEGER*4:: phcell(3), true
+    REAL*8:: phm(iNprop), dt1, prob, rannum1(3)
+    !------------------------------------------------------------------
+    ! This subroutine is used to adjust whether the intrinsic
+    ! scattering occurs.  If occurs, the properties of the phonon will
+    ! be changed
+    !
+    ! phcell: the element index of the phonon
+    ! phm: the properties of the phonon
+    ! dt1: the time needed for the movement
+    ! true: the subroutine will return value 1 to this parameter if the
+    !       scattering occurs and value 0 otherwise
+    !------------------------------------------------------------------
+
+        CALL RAND_NUMBER( rannum1 )
+
+        ! prob represents the probability of scattering occured during
+        ! time interval dt1
+        prob = 1d0 - &
+            DEXP( -dt1 * phm(7) / MFP( phcell(1), phcell(2), phcell(3) ) )
+
+        IF ( rannum1(1).le.prob ) THEN
+            phm(4) = 2D0 * rannum1(2) - 1D0
+            phm(5) = M_PI_2 * rannum1(3)
+            dEdiff(phcell(1), phcell(2), phcell(3)) = &
+                            dEdiff(phcell(1), phcell(2), phcell(3)) + &
+                            phm(6) - dEunit(phcell(1), phcell(2), phcell(3))
+            phm(6) = dEunit(phcell(1), phcell(2), phcell(3))
+            phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
+            phm(8) = iCmat(phcell(1), phcell(2), phcell(3))
+            true = 1
+        ELSEIF
+            true = 0
+        ENDIF
+
+    END SUBROUTINE proc_intrinsicscattering
 !============================================================================
-SUBROUTINE proc_intrinsicscattering(phcell,phm,dt1,true) !§PÂ_·|¤£·|µo¥Í¥»½è´²®g¡A­Y¦³´²®g¡A·|§ïÅÜÁn¤l©Ê½è
-IMPLICIT NONE
-INTEGER*4::phcell(3),true !phcell¡G¸ÓÁn¤l©Ò¦bºô®æ¡Aphm¡G¸ÓÁn¤lªº©Ò¦³©Ê½è¡Adt1¡G¦¹¬q¹B°Ê©Ò»İ®É¶¡¡Atrue¡G±Nµ²ªG¦s¦^true¡A1ªí¥Ü¦³¥»½è´²®g
-REAL*8::phm(iNprop),dt1,prob
-REAL*8,ALLOCATABLE:: rannum1(:)
-
-ALLOCATE( rannum1(3) )
-CALL random_number(rannum1)
-
-prob=1d0-DEXP(-dt1*phm(7)/MFP(phcell(1),phcell(2),phcell(3))) !¦bdt1®É¶¡¤º´²®gªº¾÷²v
-
-IF (rannum1(1).le.prob) THEN
-   phm(4)=2D0*rannum1(2)-1D0
-   phm(5)=M_PI_2*rannum1(3)
-   dEdiff(phcell(1),phcell(2),phcell(3))=dEdiff(phcell(1),phcell(2),phcell(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
-   !´²®g«áÁn¤l§ô¯à¶q¬°·í«eºô®æ·Å«×¤Uªº¯à¶q¡A©Ò¥H­n­pºâ­ì¥»Án¤l¯à¶q»P´²®g«á¥Í¤l¯à¶qªº®t­È¡A¥¼¨Ó°µ¯à¶q¦u«í¥Î³~
-   phm(6)=dEunit(phcell(1),phcell(2),phcell(3)) !¥»½è´²®g«á¡AÁn¤l¯à¶q¬°·í«eºô®æ¥­§¡Án¤l¯à¶q
-   phm(7)=dVunit(phcell(1),phcell(2),phcell(3)) !¥»½è´²®g«á¡A¸s³t¬°·í«eºô®æ¥­§¡Án¤l¸s³t
-   phm(8)=iCmat(phcell(1),phcell(2),phcell(3)) !©Ò¥H´²®g«á¡AÁn¤l¯à¶q§÷®ÆÄİ©Ê¤]ÅÜ¦¨·í«eºô®æªº§÷®Æ
-   true=1
-ENDIF
-
-DEALLOCATE( rannum1 )
-END SUBROUTINE proc_intrinsicscattering
-!============================================================================
-SUBROUTINE proc_transmissivity(phcell,cellbdy,hit,face0,phm,vel,true) !§PÂ_¬°Ãè/¶Ã¬ï®gor¤Ï®g¡A¨Ã±o¨ì¬ï/¤Ï®g«áªºÁn¤l©Ê½è
+SUBROUTINE proc_transmissivity(phcell,cellbdy,hit,face0,phm,vel,true) !åˆ¤æ–·ç‚ºé¡/äº‚ç©¿å°„oråå°„ï¼Œä¸¦å¾—åˆ°ç©¿/åå°„å¾Œçš„è²å­æ€§è³ª
 IMPLICIT NONE
 INTEGER*4::phcell(3),neighbor(3),hit,face0,true,i
-REAL*8::phm(iNprop),cellbdy(2,3),vel(3) 
+REAL*8::phm(iNprop),cellbdy(2,3),vel(3)
 REAL*8::tau12,ratio,dcosth2,dsinth2,rho1,rho2,neighborE,neighborV
 REAL*8::tau21
 REAL*8,ALLOCATABLE:: rannum1(:)
-    !phcell¡G¸ÓÁn¤l¥Ø«e©Ò¦bºô®æ¡Acellbdy¡G©Ò¦bºô®æªº6­ÓºI­±¦b¼ÒÀÀ°Ï°ìªº¦ì¸m¡Ahit¡GÁn¤l­n¸I¼²ªº­±ªº¤è¦V(1/2/3)¡A
-    !face0¡GÁn¤l­n¸I¼²ªº­±(1¥Nªí¥¿hit¤è¦V¡A-1¥Nªí­thit¤è¦V)¡Aphm¡G¸ÓÁn¤lªº©Ò¦³©Ê½è¡Avel¡G³t«×¤À¶q¡A
-    !true¡G³Ì«á¶Ç¦^true(1ªí¦¹Án¤l¹J¤Wµ´¼öÃä¬É¤Ï®g¤F¡A-1ªí¹J¤W¶g´Á©ÊÃä¬É¡A³Q²¾¨ì¥t¤@ÃäÃä¬É¡A©Î¬O¬ï³z¨ìdomain¥~)
+    !phcellï¼šè©²è²å­ç›®å‰æ‰€åœ¨ç¶²æ ¼ï¼Œcellbdyï¼šæ‰€åœ¨ç¶²æ ¼çš„6å€‹æˆªé¢åœ¨æ¨¡æ“¬å€åŸŸçš„ä½ç½®ï¼Œhitï¼šè²å­è¦ç¢°æ’çš„é¢çš„æ–¹å‘(1/2/3)ï¼Œ
+    !face0ï¼šè²å­è¦ç¢°æ’çš„é¢(1ä»£è¡¨æ­£hitæ–¹å‘ï¼Œ-1ä»£è¡¨è² hitæ–¹å‘)ï¼Œphmï¼šè©²è²å­çš„æ‰€æœ‰æ€§è³ªï¼Œvelï¼šé€Ÿåº¦åˆ†é‡ï¼Œ
+    !trueï¼šæœ€å¾Œå‚³å›true(1è¡¨æ­¤è²å­é‡ä¸Šçµ•ç†±é‚Šç•Œåå°„äº†ï¼Œ-1è¡¨é‡ä¸Šé€±æœŸæ€§é‚Šç•Œï¼Œè¢«ç§»åˆ°å¦ä¸€é‚Šé‚Šç•Œï¼Œæˆ–æ˜¯ç©¿é€åˆ°domainå¤–)
 
     !------------------
     neighbor=phcell
-    neighbor(hit)=neighbor(hit)+face0 !©Ò¥HneighborÅÜ¦¨Án¤l§Y±N²¾°Ê¹L¥hªººô®æ(OR SAY ·sºô®æ)
-    
-    IF (iCmat(neighbor(1),neighbor(2),neighbor(3)).eq.iCmat(phcell(1),phcell(2),phcell(3))) THEN !¨â­Óºô®æ§÷®Æ¬Û¦P¡AµL§é®g²{¶H
-        IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel) !­YÁn¤l¬O¬ï¹L¼ö¬y¤è¦VªººI­±¡A«h­n¥ı§PÂ_¬O¤£¬O¦³¬ï¹Ldomain¤¤¶¡ºI­±¡A¦]¬°­n°O¿ı¤¤¶¡ºI­±³Bªº¼ö³q¶q
-	    tau12 = 1d0 !¬ï³z²v100%
-	    phcell = neighbor !Án¤l©Ò¦bºô®æ§ïÅÜ¬°·sºô®æ
-	    cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !Án¤l©Ò¦bºô®æªº¨âºİºI­±(Án¤l¬ï³z¤è¦V)¦bdomain¦ì¸m¬ÛÀ³§ïÅÜ
-    
+    neighbor(hit)=neighbor(hit)+face0 !æ‰€ä»¥neighborè®Šæˆè²å­å³å°‡ç§»å‹•éå»çš„ç¶²æ ¼(OR SAY æ–°ç¶²æ ¼)
+
+    IF (iCmat(neighbor(1),neighbor(2),neighbor(3)).eq.iCmat(phcell(1),phcell(2),phcell(3))) THEN !å…©å€‹ç¶²æ ¼ææ–™ç›¸åŒï¼Œç„¡æŠ˜å°„ç¾è±¡
+        IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel) !è‹¥è²å­æ˜¯ç©¿éç†±æµæ–¹å‘çš„æˆªé¢ï¼Œå‰‡è¦å…ˆåˆ¤æ–·æ˜¯ä¸æ˜¯æœ‰ç©¿édomainä¸­é–“æˆªé¢ï¼Œå› ç‚ºè¦è¨˜éŒ„ä¸­é–“æˆªé¢è™•çš„ç†±é€šé‡
+	    tau12 = 1d0 !ç©¿é€ç‡100%
+	    phcell = neighbor !è²å­æ‰€åœ¨ç¶²æ ¼æ”¹è®Šç‚ºæ–°ç¶²æ ¼
+	    cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !è²å­æ‰€åœ¨ç¶²æ ¼çš„å…©ç«¯æˆªé¢(è²å­ç©¿é€æ–¹å‘)åœ¨domainä½ç½®ç›¸æ‡‰æ”¹è®Š
+
     ELSE ! hit the interface
         ALLOCATE( rannum1(2) )
 	    CALL random_number(rannum1)
-	    CALL proc_Energy(iCmat(neighbor(1),neighbor(2),neighbor(3)),dTemp(phcell(1),phcell(2),phcell(3)),neighborE) !¥Î·í«eºô®æ·Å«×¡A­pºâ²¾°Ê¥Øªººô®æªº³æ¦ìÅé¿n¯à¶q(U2)
-        CALL Etable(iCmat(neighbor(1),neighbor(2),neighbor(3)),4,neighborE,neighborV) !¥Î¤W¤@¨BÆJ­pºâªº¯à¶q¨D±o¡A·í«eºô®æ·Å«×¦ı§÷®Æ¬°¥Øªººô®æ§÷®Æ®Éªº¸s³t(v2)
+	    CALL proc_Energy(iCmat(neighbor(1),neighbor(2),neighbor(3)),dTemp(phcell(1),phcell(2),phcell(3)),neighborE) !ç”¨ç•¶å‰ç¶²æ ¼æº«åº¦ï¼Œè¨ˆç®—ç§»å‹•ç›®çš„ç¶²æ ¼çš„å–®ä½é«”ç©èƒ½é‡(U2)
+        CALL Etable(iCmat(neighbor(1),neighbor(2),neighbor(3)),4,neighborE,neighborV) !ç”¨ä¸Šä¸€æ­¥é©Ÿè¨ˆç®—çš„èƒ½é‡æ±‚å¾—ï¼Œç•¶å‰ç¶²æ ¼æº«åº¦ä½†ææ–™ç‚ºç›®çš„ç¶²æ ¼ææ–™æ™‚çš„ç¾¤é€Ÿ(v2)
         !----------------------------------------------------------------------------
-	    IF (rannum1(1).le.DPP(hit)) THEN ! Ãè¬ï/¤Ï®g
-	        
+	    IF (rannum1(1).le.DPP(hit)) THEN ! é¡ç©¿/åå°„
+
 	        ratio=(dEcell(phcell(1),phcell(2),phcell(3))*dVunit(phcell(1),phcell(2),phcell(3)))/(neighborE*neighborV) !(U1*v1)/(U2*v2)
-            dcosth2=vel(hit)/phm(7) !¬ï³z¤è¦Vªº³t«×¤À¶q/³t«×¡A§Y¤J®g¨¤ªºcos­È
-	        dsinth2=DSQRT((1d0-dcosth2**2)*ratio) !§é®g¨¤ªºsin­È
-	        tau12=0 !­Y¥ş¤Ï®g¡Atau12¤£·|³Q§ó§ï¡A¦]¦¹«áÄò·|³Q§PÂ_¬°Ãè¤Ï®g
-	        
-	        IF (dsinth2.lt.1d0) THEN !­Ydsinth2 > 1¡A¼Æ¾Ç¤WµL·N¸q¡Aª«²z¤W«h¬°¥ş¤Ï®g
-	        
-	            rho1=rho(iCmat(phcell(1),phcell(2),phcell(3))) !Án¤l©Ò¦bºô®æªº§÷®Æ±K«×
-		        rho2=rho(iCmat(neighbor(1),neighbor(2),neighbor(3))) !¥Øªººô®æªº§÷®Æ±K«×
-		        dcosth2=DSQRT(1d0-dsinth2**2) !¦¹®Édcosth2ÅÜ¦¨§é®g¨¤ªºcos­È
+            dcosth2=vel(hit)/phm(7) !ç©¿é€æ–¹å‘çš„é€Ÿåº¦åˆ†é‡/é€Ÿåº¦ï¼Œå³å…¥å°„è§’çš„coså€¼
+	        dsinth2=DSQRT((1d0-dcosth2**2)*ratio) !æŠ˜å°„è§’çš„sinå€¼
+	        tau12=0 !è‹¥å…¨åå°„ï¼Œtau12ä¸æœƒè¢«æ›´æ”¹ï¼Œå› æ­¤å¾ŒçºŒæœƒè¢«åˆ¤æ–·ç‚ºé¡åå°„
+
+	        IF (dsinth2.lt.1d0) THEN !è‹¥dsinth2 > 1ï¼Œæ•¸å­¸ä¸Šç„¡æ„ç¾©ï¼Œç‰©ç†ä¸Šå‰‡ç‚ºå…¨åå°„
+
+	            rho1=rho(iCmat(phcell(1),phcell(2),phcell(3))) !è²å­æ‰€åœ¨ç¶²æ ¼çš„ææ–™å¯†åº¦
+		        rho2=rho(iCmat(neighbor(1),neighbor(2),neighbor(3))) !ç›®çš„ç¶²æ ¼çš„ææ–™å¯†åº¦
+		        dcosth2=DSQRT(1d0-dsinth2**2) !æ­¤æ™‚dcosth2è®ŠæˆæŠ˜å°„è§’çš„coså€¼
 		        tau12=(rho2*neighborV*dcosth2)/DABS(rho1*vel(hit))
-		        tau12=1d0-((1d0-tau12)/(1d0+tau12))**2  !Ãè¬ï³z²v
-	        
+		        tau12=1d0-((1d0-tau12)/(1d0+tau12))**2  !é¡ç©¿é€ç‡
+
 	        ENDIF
-	        
-	        IF (rannum1(2).lt.tau12) THEN !! Ãè¬ï³z (IAMM)
+
+	        IF (rannum1(2).lt.tau12) THEN !! é¡ç©¿é€ (IAMM)
 	            IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel)
-	            CALL Snells( ratio,phm,vel,hit ) !¨M©w§é®g(¬ï³z)«áªº²¾°Ê¤è¦V
-	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) 
+	            CALL Snells( ratio,phm,vel,hit ) !æ±ºå®šæŠ˜å°„(ç©¿é€)å¾Œçš„ç§»å‹•æ–¹å‘
+	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0)
 		        !dEdiff(neighbor(1),neighbor(2),neighbor(3))=dEdiff(neighbor(1),neighbor(2),neighbor(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
                 !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
 		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !Án¤l¥u·|§ïÅÜ¸s³t!
-		        phcell = neighbor !Án¤l©ÒÄİºô®æ§ïÅÜ
-	        ELSE !! Ãè¤Ï®g
+                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !è²å­åªæœƒæ”¹è®Šç¾¤é€Ÿ!
+		        phcell = neighbor !è²å­æ‰€å±¬ç¶²æ ¼æ”¹è®Š
+	        ELSE !! é¡åå°„
 	            IF (hit.eq.1) THEN
 		            phm(4)=-phm(4)
 		        ELSE IF (hit.eq.2) THEN
@@ -183,31 +234,31 @@ REAL*8,ALLOCATABLE:: rannum1(:)
 		        ELSE ! hit.eq.3
 		  	        phm(5)=M_PI_2-phm(5)
 		        ENDIF
-		        !Ãè¤Ï®g°£¤F²¾°Ê¤è¦V§ïÅÜ¡A¨ä¥L¥ş³¡³£¤£·|ÅÜ
+		        !é¡åå°„é™¤äº†ç§»å‹•æ–¹å‘æ”¹è®Šï¼Œå…¶ä»–å…¨éƒ¨éƒ½ä¸æœƒè®Š
 	        ENDIF
 	    !----------------------------------------------------------------------------
-	    ELSE ! ¶Ã¬ï/¤Ï®g
-            tau12=(neighborE*neighborV)/(dEcell(phcell(1),phcell(2),phcell(3))*dVunit(phcell(1),phcell(2),phcell(3))+neighborE*neighborV) !¶Ã®g®Éªº¬ï³z²v
-	        IF (rannum1(2).le.tau12) THEN !! ¶Ã¬ï³z (DAMM)		            
+	    ELSE ! äº‚ç©¿/åå°„
+            tau12=(neighborE*neighborV)/(dEcell(phcell(1),phcell(2),phcell(3))*dVunit(phcell(1),phcell(2),phcell(3))+neighborE*neighborV) !äº‚å°„æ™‚çš„ç©¿é€ç‡
+	        IF (rannum1(2).le.tau12) THEN !! äº‚ç©¿é€ (DAMM)
 	            IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel)
-	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !Án¤l©ÒÄİºô®æ§ïÅÜ
+	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !è²å­æ‰€å±¬ç¶²æ ¼æ”¹è®Š
 		        !dEdiff(neighbor(1),neighbor(2),neighbor(3))=dEdiff(neighbor(1),neighbor(2),neighbor(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
 		        !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
 		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-		        CALL diffuseB( phm,hit,face0,1 ) !¨M©w¶Ã¤Ï/¬ï®g«áªº¤è¦V
-                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !¥u·|§ïÅÜ¸s³t!!!!!
-		        phcell = neighbor !Án¤l©ÒÄİºô®æ§ïÅÜ
-            !----------------------------------------------------------------------------		  
-	        ELSE !! ¶Ã¤Ï®g (DAMM)
+		        CALL diffuseB( phm,hit,face0,1 ) !æ±ºå®šäº‚å/ç©¿å°„å¾Œçš„æ–¹å‘
+                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !åªæœƒæ”¹è®Šç¾¤é€Ÿ!!!!!
+		        phcell = neighbor !è²å­æ‰€å±¬ç¶²æ ¼æ”¹è®Š
+            !----------------------------------------------------------------------------
+	        ELSE !! äº‚åå°„ (DAMM)
 	            !dEdiff(phcell(1),phcell(2),phcell(3))=dEdiff(phcell(1),phcell(2),phcell(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
 		        !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
 		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-		        CALL diffuseB( phm,hit,face0,-1 ) !¨M©w¶Ã¤Ï/¬ï®g«áªº¤è¦V
-                phm(7)=dVunit(phcell(1),phcell(2),phcell(3)) !¥u·|§ïÅÜ¸s³t!!!!!
+		        CALL diffuseB( phm,hit,face0,-1 ) !æ±ºå®šäº‚å/ç©¿å°„å¾Œçš„æ–¹å‘
+                phm(7)=dVunit(phcell(1),phcell(2),phcell(3)) !åªæœƒæ”¹è®Šç¾¤é€Ÿ!!!!!
 	        ENDIF
 	    ENDIF
-	    
-	    !µL½×¬OÃè¶Ã/¤Ï®g¬ï®g¡AÁn¤l¯à¶q³q³q³£¤£·|ÅÜ¡A¦Ó°£¤FÃè¤Ï®g¥u§ïÅÜ¤è¦V¥~¡A¨ä¥L¤TºØ±¡ªp·|§ïÅÜ¤è¦V»P¸s³t
+
+	    !ç„¡è«–æ˜¯é¡äº‚/åå°„ç©¿å°„ï¼Œè²å­èƒ½é‡é€šé€šéƒ½ä¸æœƒè®Šï¼Œè€Œé™¤äº†é¡åå°„åªæ”¹è®Šæ–¹å‘å¤–ï¼Œå…¶ä»–ä¸‰ç¨®æƒ…æ³æœƒæ”¹è®Šæ–¹å‘èˆ‡ç¾¤é€Ÿ
 !----------------------------------------------------------------------------
         true = 1
 	    DEALLOCATE( rannum1 )
@@ -215,44 +266,44 @@ REAL*8,ALLOCATABLE:: rannum1(:)
 
 END SUBROUTINE proc_transmissivity
 !============================================================================
-SUBROUTINE proc_outdomain(phcell,cellbdy,hit,face0,phm,dtremain,true) !§PÂ_Án¤l¬O§_·|Â÷¶}domain¡A­YÂ÷¶}ªº¸Ü¡A¨Ì·Óbc¤£¦P¡A§ïÅÜ©Ê½è
+SUBROUTINE proc_outdomain(phcell,cellbdy,hit,face0,phm,dtremain,true) !åˆ¤æ–·è²å­æ˜¯å¦æœƒé›¢é–‹domainï¼Œè‹¥é›¢é–‹çš„è©±ï¼Œä¾ç…§bcä¸åŒï¼Œæ”¹è®Šæ€§è³ª
     IMPLICIT NONE
     INTEGER*4::phcell(3),hit,face0,true,judge,j,k
     REAL*8::phm(iNprop),cellbdy(2,3),dtremain,tmp,rannum
-    !phcell¡G¸ÓÁn¤l¥Ø«e©Ò¦bºô®æ¡Acellbdy¡G©Ò¦bºô®æªº6­ÓºI­±¦b¼ÒÀÀ°Ï°ìªº¦ì¸m¡Ahit¡GÁn¤l­n¸I¼²ªº­±ªº¤è¦V(1/2/3)¡A
-    !face0¡G¥Í¤l­n¸I¼²ªº­±(1¥Nªí¥¿ªºhit¤è¦V¡A-1¥Nªí­tªºhit¤è¦V)¡Aphm¡G¸ÓÁn¤lªº©Ò¦³©Ê½è¡Adtremail¡GÁn¤l³Ñ¾l¹B°Ê®É¶¡¡A
-    !true¡G³Ì«á¶Ç¦^true(1ªí¦¹Án¤l¹J¤Wµ´¼öÃä¬É¤Ï®g¤F¡A-1ªí¹J¤W¶g´Á©ÊÃä¬É¡A³Q²¾¨ì¥t¤@ÃäÃä¬É¡A©Î¬O¬ï³z¨ìdomain¥~)
+    !phcellï¼šè©²è²å­ç›®å‰æ‰€åœ¨ç¶²æ ¼ï¼Œcellbdyï¼šæ‰€åœ¨ç¶²æ ¼çš„6å€‹æˆªé¢åœ¨æ¨¡æ“¬å€åŸŸçš„ä½ç½®ï¼Œhitï¼šè²å­è¦ç¢°æ’çš„é¢çš„æ–¹å‘(1/2/3)ï¼Œ
+    !face0ï¼šç”Ÿå­è¦ç¢°æ’çš„é¢(1ä»£è¡¨æ­£çš„hitæ–¹å‘ï¼Œ-1ä»£è¡¨è² çš„hitæ–¹å‘)ï¼Œphmï¼šè©²è²å­çš„æ‰€æœ‰æ€§è³ªï¼Œdtremailï¼šè²å­å‰©é¤˜é‹å‹•æ™‚é–“ï¼Œ
+    !trueï¼šæœ€å¾Œå‚³å›true(1è¡¨æ­¤è²å­é‡ä¸Šçµ•ç†±é‚Šç•Œåå°„äº†ï¼Œ-1è¡¨é‡ä¸Šé€±æœŸæ€§é‚Šç•Œï¼Œè¢«ç§»åˆ°å¦ä¸€é‚Šé‚Šç•Œï¼Œæˆ–æ˜¯ç©¿é€åˆ°domainå¤–)
 
     CALL random_number(rannum)
     judge=0
-    IF (phcell(hit).eq.iNcell(hit).and.face0.gt.0) judge=1 !¦¹ºô®æ¦b¼ÒÀÀ°Ï°ì(­Y¬O¼ö¬y¤è¦V¡A´N¬O¥X¤fÃä¬É)Ãä¬É¤W¡A¥BÁn¤l¥¿©¹Ãä¬É²¾°Ê
-    IF (phcell(hit).eq.1.and.face0.lt.0) judge = -1 !¦¹ºô®æ¦b¼ÒÀÀ°Ï°ìÃä¬É¤W(­Y¬O¼ö¬y¤è¦V¡A´N¬O¤J¤fÃä¬É)Ãä¬É¤W¡A¥BÁn¤l¥¿©¹Ãä¬É²¾°Ê
+    IF (phcell(hit).eq.iNcell(hit).and.face0.gt.0) judge=1 !æ­¤ç¶²æ ¼åœ¨æ¨¡æ“¬å€åŸŸ(è‹¥æ˜¯ç†±æµæ–¹å‘ï¼Œå°±æ˜¯å‡ºå£é‚Šç•Œ)é‚Šç•Œä¸Šï¼Œä¸”è²å­æ­£å¾€é‚Šç•Œç§»å‹•
+    IF (phcell(hit).eq.1.and.face0.lt.0) judge = -1 !æ­¤ç¶²æ ¼åœ¨æ¨¡æ“¬å€åŸŸé‚Šç•Œä¸Š(è‹¥æ˜¯ç†±æµæ–¹å‘ï¼Œå°±æ˜¯å…¥å£é‚Šç•Œ)é‚Šç•Œä¸Šï¼Œä¸”è²å­æ­£å¾€é‚Šç•Œç§»å‹•
 
-    IF (judge.ne.0) THEN !­Yµ¥©ó0´Nªí¥Ü¤£·|¬ï¹L¤¶­±
+    IF (judge.ne.0) THEN !è‹¥ç­‰æ–¼0å°±è¡¨ç¤ºä¸æœƒç©¿éä»‹é¢
         ! option=1: partially specularly and partially diffusely reflected
         ! option=2: periodic boundary condition
         ! option=3: leaving and being saved for heat control
         !-----------------------------------------------------------------------------------------------------------------
-        IF (option(hit).eq.1) THEN !­Y¬O¤Ï®g(µ´¼ö)
-            IF (rannum.le.DPPB(hit)) THEN ! Ãè¤Ï®g 
-	            IF (hit.eq.1) THEN 
+        IF (option(hit).eq.1) THEN !è‹¥æ˜¯åå°„(çµ•ç†±)
+            IF (rannum.le.DPPB(hit)) THEN ! é¡åå°„
+	            IF (hit.eq.1) THEN
 		            phm(4)=-phm(4)
 	            ELSE IF (hit.eq.2) THEN
 		            phm(5)=M_PI-phm(5)
 		            IF (phm(5).lt.0) phm(5)=phm(5)+M_PI_2
 	            ELSE ! hit.eq.3
 		            phm(5)=M_PI_2-phm(5)
-		        ENDIF 
-		        !Ãä¬ÉÃè¤Ï®g¥u§ïÅÜ¤è¦V¡A¨ä¥L¤£§ïÅÜ???
-	        ELSE !¶Ã¤Ï®g
-                CALL diffuseB( phm,hit,judge,-1 ) !!¨M©w¶Ã¤Ï/Ãè®g«áªº¤è¦V
-		        dEdiff(phcell(1),phcell(2),phcell(3))=dEdiff(phcell(1),phcell(2),phcell(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3)) !¦¹®Éphm(6)¬OÁÙ¥¼´²®g«eªºÁn¤l¯à¶q¡AdEunit(phcell(1),phcell(2),phcell(3))¬O´²®g«áªºÁn¤l¯à¶q(¬°¸Óºô®æ¥­§¡Án¤l¯à¶q)
+		        ENDIF
+		        !é‚Šç•Œé¡åå°„åªæ”¹è®Šæ–¹å‘ï¼Œå…¶ä»–ä¸æ”¹è®Š???
+	        ELSE !äº‚åå°„
+                CALL diffuseB( phm,hit,judge,-1 ) !!æ±ºå®šäº‚å/é¡å°„å¾Œçš„æ–¹å‘
+		        dEdiff(phcell(1),phcell(2),phcell(3))=dEdiff(phcell(1),phcell(2),phcell(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3)) !æ­¤æ™‚phm(6)æ˜¯é‚„æœªæ•£å°„å‰çš„è²å­èƒ½é‡ï¼ŒdEunit(phcell(1),phcell(2),phcell(3))æ˜¯æ•£å°„å¾Œçš„è²å­èƒ½é‡(ç‚ºè©²ç¶²æ ¼å¹³å‡è²å­èƒ½é‡)
                 phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
                 phm(7)=dVunit(phcell(1),phcell(2),phcell(3))
 		        phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-		        !Ãä¬É¶Ã¤Ï®g°£¤F§ïÅÜ¤è¦V¡AÁn¤l¯à¶q¡B¸s³t¡B§÷®ÆÄİ©Ê¤]·|§ïÅÜ
-	        ENDIF 
-	        
+		        !é‚Šç•Œäº‚åå°„é™¤äº†æ”¹è®Šæ–¹å‘ï¼Œè²å­èƒ½é‡ã€ç¾¤é€Ÿã€ææ–™å±¬æ€§ä¹Ÿæœƒæ”¹è®Š
+	        ENDIF
+
 	        true=1
         !-----------------------------------------------------------------------------------------------------------------
         ELSE IF (option(hit).eq.2) THEN
@@ -268,20 +319,20 @@ SUBROUTINE proc_outdomain(phcell,cellbdy,hit,face0,phm,dtremain,true) !§PÂ_Án¤l¬
 		        cellbdy(2,hit)=dLdomain(hit)
 		        cellbdy(1,hit)=dLdomain(hit)-dLclen(hit)
 	        ENDIF !1-1-2
-	        
+
 	        IF (true.eq.0) true=-1
 !-----------------------------------------------------------------------------------------------------------------
         ELSE IF (option(hit).eq.3) THEN ! possible only if hit=1
 	        j=phcell(2)
 	        k=phcell(3)
-	        IF (WAY_DIR.eq.1) THEN !WAY_DIR=1¬°¶g´Á¤J®gªk¡A2¬°¶Ã¼Æ¤J³]ªk
-	            IF (judge.eq.1) THEN !judge=1ªí¥Ü±q¥¿Ãä¬ÉÂ÷¶}(2­±)
-	                mlost(j,k,1)=mlost(j,k,1)+1 !±q2­±Â÷¶}ªºÁn¤l·|³Q1­±ªº¬Û¦P¦ì¸mºô®æ¨Ï¥Î¡A©Ò¥Hª½±µ°O¦¨1¡A¥Nªí³o¬Oµ¹1­±ªºÃä¬Éºô®æ¨Ï¥Îªº
+	        IF (WAY_DIR.eq.1) THEN !WAY_DIR=1ç‚ºé€±æœŸå…¥å°„æ³•ï¼Œ2ç‚ºäº‚æ•¸å…¥è¨­æ³•
+	            IF (judge.eq.1) THEN !judge=1è¡¨ç¤ºå¾æ­£é‚Šç•Œé›¢é–‹(2é¢)
+	                mlost(j,k,1)=mlost(j,k,1)+1 !å¾2é¢é›¢é–‹çš„è²å­æœƒè¢«1é¢çš„ç›¸åŒä½ç½®ç¶²æ ¼ä½¿ç”¨ï¼Œæ‰€ä»¥ç›´æ¥è¨˜æˆ1ï¼Œä»£è¡¨é€™æ˜¯çµ¦1é¢çš„é‚Šç•Œç¶²æ ¼ä½¿ç”¨çš„
 			        IF (mlost(j,k,1).gt.iNmakeup) mlost(j,k,1)=1
 		            dPpool(1,mlost(j,k,1),j,k,1)=dtremain
 		            dPpool(2:5,mlost(j,k,1),j,k,1)=phm(2:5)
 			        dPpool(6,mlost(j,k,1),j,k,1)=phm(8)
-	            ELSE 
+	            ELSE
 	                mlost(j,k,2)=mlost(j,k,2)+1
 			        IF (mlost(j,k,2).gt.iNmakeup) mlost(j,k,2)=1
 		            dPpool(1,mlost(j,k,2),j,k,2)=dtremain
@@ -289,12 +340,12 @@ SUBROUTINE proc_outdomain(phcell,cellbdy,hit,face0,phm,dtremain,true) !§PÂ_Án¤l¬
 			        dPpool(6,mlost(j,k,2),j,k,2)=phm(8)
 	            ENDIF
 	        ENDIF !1-1-3
-	        
-	        IF (WAY_HEAT.eq.1) THEN !WAY_HEAT=1¬°©w¼ö³q¶q¡A2¬°©T©wÃä¬É·Å«×
+
+	        IF (WAY_HEAT.eq.1) THEN !WAY_HEAT=1ç‚ºå®šç†±é€šé‡ï¼Œ2ç‚ºå›ºå®šé‚Šç•Œæº«åº¦
 	            IF (judge.eq.+1) dElost(j,k,2)=dElost(j,k,2)+phm(6)
 	            IF (judge.eq.-1) dElost(j,k,1)=dElost(j,k,1)+phm(6)
 	        ENDIF !1-1-4
-	        
+
 	        phm(6)=0
 	        dtremain=0
 	        true=-1
@@ -303,7 +354,7 @@ SUBROUTINE proc_outdomain(phcell,cellbdy,hit,face0,phm,dtremain,true) !§PÂ_Án¤l¬
 
 END SUBROUTINE proc_outdomain
 !============================================================================
-SUBROUTINE proc_createdelete !¥Î¨Ó¶i¦æºô®æ¯à¶q¦u«í®É¦bºô®æ¤º¼W©Î´îÁn¤l(¤º¤w¥]§t­«·s¾ã²z)
+SUBROUTINE proc_createdelete !ç”¨ä¾†é€²è¡Œç¶²æ ¼èƒ½é‡å®ˆæ†æ™‚åœ¨ç¶²æ ¼å…§å¢æˆ–æ¸›è²å­(å…§å·²åŒ…å«é‡æ–°æ•´ç†)
     IMPLICIT NONE
     INTEGER*4::i,j,k,m,s,bg,ed,true
     REAL*8::random1,tmp
@@ -345,9 +396,9 @@ SUBROUTINE proc_createdelete !¥Î¨Ó¶i¦æºô®æ¯à¶q¦u«í®É¦bºô®æ¤º¼W©Î´îÁn¤l(¤º¤w¥]§t­
                 DO i=1,iNcell(1)
                     bg=iNbgcell(i,j,k)+1
                     ed=iNbgcell(i,j,k)+iNnumcell(i,j,k)
-                    IF (nadd(i,j,k).eq.0) THEN    
+                    IF (nadd(i,j,k).eq.0) THEN
 	                    newphn(:,s+1:s+iNnumcell(i,j,k))=phn(:,bg:ed)
-	                    s=s+iNnumcell(i,j,k)	
+	                    s=s+iNnumcell(i,j,k)
 	                ELSE IF (nadd(i,j,k).gt.0) THEN
 	                    newphn(:,s+1:s+iNnumcell(i,j,k))=phn(:,bg:ed)
 	                    s=s+iNnumcell(i,j,k)
@@ -393,18 +444,18 @@ SUBROUTINE proc_createdelete !¥Î¨Ó¶i¦æºô®æ¯à¶q¦u«í®É¦bºô®æ¤º¼W©Î´îÁn¤l(¤º¤w¥]§t­
             ENDDO
         ENDDO
     ENDIF
- 
+
     DEALLOCATE( nadd )
 END SUBROUTINE proc_createdelete
 !============================================================================
-SUBROUTINE Compute_qflux(phcell,phm,vel) !­pºâ¤¤¶¡ºI­±³Bªº¼ö³q¶q
+SUBROUTINE Compute_qflux(phcell,phm,vel) !è¨ˆç®—ä¸­é–“æˆªé¢è™•çš„ç†±é€šé‡
     IMPLICIT NONE
     INTEGER*4:: phcell(3)
     REAL*8:: phm(7),vel(3)
 
-    IF (phcell(1).eq.iNcell(1)/2.and.vel(1).gt.0d0) THEN !Án¤l©¹¥¿¤è¦V²¾°Ê³q¹L¤¤¶¡ºI­±
+    IF (phcell(1).eq.iNcell(1)/2.and.vel(1).gt.0d0) THEN !è²å­å¾€æ­£æ–¹å‘ç§»å‹•é€šéä¸­é–“æˆªé¢
         qflow(phcell(2),phcell(3))=qflow(phcell(2),phcell(3))+phm(6)
-    ELSE IF (phcell(1).eq.iNcell(1)/2+1.and.vel(1).lt.0d0) THEN !Án¤l©¹­t¤è¦V²¾°Ê¬ï¹L¤¤¶¡ºI­±
+    ELSE IF (phcell(1).eq.iNcell(1)/2+1.and.vel(1).lt.0d0) THEN !è²å­å¾€è² æ–¹å‘ç§»å‹•ç©¿éä¸­é–“æˆªé¢
         qflow(phcell(2),phcell(3))=qflow(phcell(2),phcell(3))-phm(6)
     ENDIF
 

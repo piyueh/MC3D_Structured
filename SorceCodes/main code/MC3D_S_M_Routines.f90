@@ -89,60 +89,83 @@ SUBROUTINE diffuseB( phm,idx,face0,nc )  !決定亂反/穿射後的方向
     DEALLOCATE( rannum )
 END SUBROUTINE diffuseB
 !============================================================================
-SUBROUTINE proc_reorder !重新整體各網格聲子數、累計聲子數，並重新替所有聲子編號
-IMPLICIT NONE
-INTEGER*4:: i,j,k,tot,m,tmp
-REAL*8,ALLOCATABLE::lcr(:,:),newp(:,:)
-iNnumcell=0
-iNbgcell=0
-ALLOCATE(lcr(iNph,3))
+    SUBROUTINE proc_reorder
+    IMPLICIT NONE
+    INTEGER*4:: i, j, k, tot, m
+    REAL*8, ALLOCATABLE:: lcr(:, :), newp(:, :)
 
-DO m=1,iNph
-    IF (phn(6,m).gt.0) THEN !第6項性質為聲子束能量，聲子束能量怎麼會是零???即使散射後也不會是零吧?..能量為零代表該聲子已被移除模擬區域(離開邊界之類))
-        i=INT(phn(1,m)/dLclen(1))+1 !第m顆聲子束所在的網格
-        j=INT(phn(2,m)/dLclen(2))+1 !同上
-        k=INT(phn(3,m)/dLclen(3))+1 !同上
-        iNnumcell(i,j,k)=iNnumcell(i,j,k)+1 !最後會得到第(i,j,k)網格的聲子束數量
-        lcr(m,1)=i !記錄每顆聲子所處的網格
-        lcr(m,2)=j !同上
-        lcr(m,3)=k !同上
-    ENDIF
-END DO
+        iNnumcell=0
+        iNbgcell=0
+        ALLOCATE(lcr(iNph,3))
 
-tot=0
-
-DO k=1,iNcell(3)
-    DO j=1,iNcell(2)
-        DO i=1,iNcell(1)
-            iNbgcell(i,j,k)=tot !累計到第(i-1,j,k)網格時的總聲子束數量
-            tot=tot+iNnumcell(i,j,k)
+        DO m = 1, iNph
+            IF ( phn(6, m).gt.0 ) THEN
+                i = INT( phn(1, m) / dLclen(1) ) + 1
+                j = INT( phn(2, m) / dLclen(2) ) + 1
+                k = INT( phn(3, m) / dLclen(3) ) + 1
+                iNnumcell(i, j, k) = iNnumcell(i, j, k) + 1
+                lcr(m, 1) = i
+                lcr(m, 2) = j
+                lcr(m, 3) = k
+            ENDIF
         ENDDO
-    ENDDO
-ENDDO !這三個迴圈執行完可以得到總聲子束數量tot
-!tot不是跟iNph一樣嗎?????
-!Ans：如果有聲子束的能量等於零，則tot就跟iNph不一樣了
 
-iNnumcell=0
+        tot=0
 
-ALLOCATE( newp(iNprop,tot) )
+        DO k = 1, iNcell(3)
+            DO j = 1, iNcell(2)
+                DO i = 1, iNcell(1)
+                    iNbgcell(i, j, k) = tot
+                    tot = tot + iNnumcell(i,j,k)
+                ENDDO
+            ENDDO
+        ENDDO
 
-DO m=1,iNph
-    IF (phn(6,m).gt.0) THEN
-        i=lcr(m,1)
-        j=lcr(m,2)
-        k=lcr(m,3)
-        iNnumcell(i,j,k)=iNnumcell(i,j,k)+1 !最後會得到第(i,j,k)網格的聲子束數量
-        newp(:,iNbgcell(i,j,k)+iNnumcell(i,j,k))=phn(:,m)
-    ENDIF
-ENDDO
+        iNnumcell=0
 
-DEALLOCATE( phn )
-ALLOCATE( phn(iNprop,tot) )
-phn=newp
-iNph=tot
+        ALLOCATE( newp(iNprop, tot) )
 
-DEALLOCATE(lcr,newp)
-END SUBROUTINE proc_reorder
+        DO m = 1, iNph
+            IF ( phn(6, m).gt.0 ) THEN
+                i = lcr(m, 1)
+                j = lcr(m, 2)
+                k = lcr(m, 3)
+                iNnumcell(i, j, k) = iNnumcell(i, j, k)+1 !最後會得到第(i,j,k)網格的聲子束數量
+                newp(:, iNbgcell(i, j, k) + iNnumcell(i, j, k)) = phn(:, m)
+            ENDIF
+        ENDDO
+
+        DEALLOCATE( phn )
+        ALLOCATE( phn(iNprop, tot) )
+    
+        phn = newp
+        iNph = tot
+
+        DEALLOCATE(lcr,newp)
+    
+    END SUBROUTINE proc_reorder
+!============================================================================
+    SUBROUTINE cellinfo
+    IMPLICIT NONE
+    INTEGER*4:: i, j, k, bg, ed
+
+        DO k = 1, iNcell(3)
+            DO j = 1, iNcell(2)
+                DO i = 1, iNcell(1)
+                    bg = iNbgcell(i, j, k) + 1
+                    ed = iNbgcell(i, j, k) + iNnumcell(i, j, k)
+                    dEcell(i, j, k) = SUM( phn(6, bg:ed) ) / dVolume  ! energy density in this cell
+                    CALL Etable( iCmat(i,j,k), 2, dEcell(i,j,k), dEunit(i,j,k) ) ! number density of phonons
+                    CALL Etable( iCmat(i,j,k), 4, dEcell(i,j,k), dVunit(i,j,k) ) ! phonon group velocity
+                    CALL Etable( iCmat(i,j,k), 5, dEcell(i,j,k), MFP(i,j,k) ) ! MFP in this cell
+                    CALL Etable( iCmat(i,j,k), 1, dEcell(i,j,k), dTemp(i,j,k)) ! temperature
+                    dEunit(i, j, k) = dEcell(i, j, k) / dEunit(i,j,k) * bundle( iCmat(i, j, k) )
+                    ! average energy per phonon bundle
+                ENDDO
+            ENDDO
+        ENDDO
+
+    END SUBROUTINE cellinfo
 !============================================================================
 SUBROUTINE Etable(mat,idx,E,out) !mat=1:Ge, mat=2:Si, idx=1:temperature, 2:number density, 4:velocity, 5:MFP, 6:specific heat
 IMPLICIT NONE

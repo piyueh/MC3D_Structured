@@ -1,6 +1,6 @@
 !****************************************************************************
-!   HEADING: MC3D I/O MODULE
-!   AUTHOR: MJ Huang
+!   HEADING: MC3D - Structured Solver: I/O MODULE
+!   AUTHOR: MJ Huang, PY Chuang
 !   PURPOSE: This module handles the input/output processes.
 !   DATE: 2009.7.10
 !****************************************************************************
@@ -11,105 +11,160 @@ IMPLICIT NONE
 !############################################################################
 CONTAINS
 !============================================================================
-SUBROUTINE readtable
-IMPLICIT NONE
+    SUBROUTINE readtable
+    IMPLICIT NONE
 
-OPEN(unit=LRGe,file="Ge_real_table.txt")
-OPEN(unit=LRSi,file="Si_real_table.txt")
+        OPEN(UNIT = LRGe, FILE = "Ge_real_table.txt")
+        OPEN(UNIT = LRSi, FILE = "Si_real_table.txt")
 
-READ(LRGe,*) iN_Ge1,iN_Ge2
-READ(LRSi,*) iN_Si1,iN_Si2
+        READ(LRGe, *) iN_Ge1, iN_Ge2
+        READ(LRSi, *) iN_Si1, iN_Si2
 
-ALLOCATE( Ge_table(iN_Ge1,iN_Ge2) )
-ALLOCATE( Si_table(iN_Si1,iN_Si2) )
-READ(LRGe,*) Ge_table
-READ(LRSi,*) Si_table
+        ALLOCATE(Ge_table(iN_Ge1, iN_Ge2))
+        ALLOCATE(Si_table(iN_Si1, iN_Si2))
+        READ(LRGe,*) Ge_table
+        READ(LRSi,*) Si_table
 
-Ge_start=Ge_table(3,1)
-dU_Ge=Ge_table(3,2)-Ge_table(3,1)
-Si_start=Si_table(3,1)
-dU_Si=Si_table(3,2)-Si_table(3,1)
+        Ge_start = Ge_table(3, 1)
+        dU_Ge = Ge_table(3, 2) - Ge_table(3, 1)
+        Si_start = Si_table(3, 1)
+        dU_Si = Si_table(3, 2) - Si_table(3, 1)
 
-PRINT*,'# of Ge data = ',iN_Ge2
-PRINT*,'# of Si data = ',iN_Si2
-PRINT*,'Ge_start (meV) = ',Ge_start
-PRINT*,'dU_Ge    (meV) = ',dU_Ge
-PRINT*,'Si_start (meV) = ',Si_start
-PRINT*,'Si_Ge    (meV) = ',dU_Si
+        WRITE(*, *) '# of Ge data = ',iN_Ge2
+        WRITE(*, *) '# of Si data = ',iN_Si2
+        WRITE(*, *) 'Ge_start (meV) = ',Ge_start
+        WRITE(*, *) 'dU_Ge    (meV) = ',dU_Ge
+        WRITE(*, *) 'Si_start (meV) = ',Si_start
+        WRITE(*, *) 'Si_Ge    (meV) = ',dU_Si
 
-CLOSE(LRGe)
-CLOSE(LRSi)
-END SUBROUTINE readtable
+        CLOSE(LRGe)
+        CLOSE(LRSi)
+
+    END SUBROUTINE readtable
 !============================================================================
-SUBROUTINE initialize
-IMPLICIT NONE
-INTEGER*4:: idx
-real*8:: falseheatflux
-! DPP=specular fraction of internal interfaces
-! DPPB=specular fraction of computational boundaries
-READ(LR,*) bundle,dt,time0,iNcell 
-READ(LR,*) dLdomain,dLclen,option,DPP,DPPB
-!-------------------------------
- if (cba.eq.1) then
-    read(LR,*) dEheatflux0
- else if (cba.eq.2) then
-    read(LR,*) falseheatflux
- endif
-!------------------------------
+!============================================================================
+    SUBROUTINE initialize(NorR)
+    IMPLICIT NONE
+    INTEGER*4:: idx, NorR
+    ! DPP=specular fraction of internal interfaces
+    ! DPPB=specular fraction of computational boundaries
 
-READ(LR,*) iNprop,iNph
-PRINT*,'domain = ',dLdomain
-PRINT*,'Ncells = ',iNcell
-PRINT*,'bundle = ',bundle
-PRINT*,'option = ',option
-PRINT*,'DPP = ',DPP
-PRINT*,'DPPB = ',DPPB
-PRINT*,'dEheatflux [meV/(ps.nm^2)] = ',dEheatflux0
-PRINT*,'dt (ps) = ',dt
-PRINT*,'time (ps) = ',time0
-!----------------------------------------------------------------------
-dArea=dLclen(2)*dLclen(3)
-dVolume=dLclen(1)*dArea
-!------------------------
-if (cba.ne.2) then
-    dEheatflux0=dEheatflux0*dArea*dt*DBLE(iNcell(2)*iNcell(3))   ! meV/(ps.nm^2)*(nm^2)*(ps)=meV
-endif
-!--------------------------
-PRINT*,'dEheatflux*dArea*dt (meV/cell) = ',dEheatflux0/DBLE(iNcell(2)*iNcell(3))
+        SELECTCASE(NorR)
+        CASE(1)
+            WRITE(*, *) "Start to Read Initialization Data..."
+            OPEN(LR, FILE = inputfilename)
+        CASE(2)
+            WRITE(*, *) "Start to Read Restart Data..."
+            OPEN(LR, FILE = restartfilename)
+        ENDSELECT
 
-ALLOCATE(  iCmat(iNcell(1),iNcell(2),iNcell(3)),iNnumcell(iNcell(1),iNcell(2),iNcell(3)),iNbgcell(iNcell(1),iNcell(2),iNcell(3)) )
-ALLOCATE( dEcell(iNcell(1),iNcell(2),iNcell(3)),    dTemp(iNcell(1),iNcell(2),iNcell(3)),  dEunit(iNcell(1),iNcell(2),iNcell(3)) )
-ALLOCATE( dEdiff(iNcell(1),iNcell(2),iNcell(3)),   dVunit(iNcell(1),iNcell(2),iNcell(3)),     MFP(iNcell(1),iNcell(2),iNcell(3)) )
+        WRITE(*, *) "   Reading dt..."
+        READ(LR, *) dt
+        WRITE(*, *) "   Reading iter0..."
+        READ(LR, *) iter0
+        WRITE(*, *) "   Reading dLdomain..."
+        READ(LR, *) dLdomain
+        WRITE(*, *) "   Reading iNcell..."
+        READ(LR, *) iNcell
+        WRITE(*, *) "   Reading dLclen..."
+        READ(LR, *) dLclen
+        WRITE(*, *) "   Reading bundle..."
+        READ(LR, *) bundle
+        WRITE(*, *) "   Reading iNprop & iNph..."
+        READ(LR, *) iNprop,iNph
+        WRITE(*, *) "   Reading iNmakeup..."
+        READ(LR, *) iNmakeup
 
-IF (option(1).eq.3) THEN
-    ALLOCATE( dElost(iNcell(2),iNcell(3),2),dEinject(iNcell(2),iNcell(3),2,2),dVinject(iNcell(2),iNcell(3),2,2),iNemit(iNcell(2),iNcell(3),2) )
-    ALLOCATE( qflow(iNcell(2),iNcell(3)),qctrl0(iNcell(2),iNcell(3)),dEheatflux(iNcell(2),iNcell(3),2) )
-    if (cba.ne.2) then
-        allocate(qctrl(iNcell(2),iNcell(3)))
-    endif
-ENDIF
+        ALLOCATE( iCmat(iNcell(1), iNcell(2), iNcell(3)) )
+        WRITE(*, *) "   Reading iCmat..."
+        READ(LR, *) iCmat
 
-ALLOCATE( phn(iNprop,iNph) )
+        ALLOCATE( phn(iNprop, iNph) )
+        WRITE(*, *) "   Reading phn..."
+        READ(LR, *) phn
 
-dEdiff=0
+        ALLOCATE( dEdiff(iNcell(1), iNcell(2), iNcell(3)) )
+        WRITE(*, *) "   Reading dEdiff..."
+        READ(LR, *) dEdiff
 
-READ(LR,*) iCmat
-READ(LR,*) phn
-READ(LR,*) dEdiff
+        ALLOCATE( dPpool(6, iNmakeup, iNcell(2), iNcell(3), 2) )
+        WRITE(*, *) "   Reading dPpool..."
+        READ(LR, *) dPpool
 
-CALL proc_reorder !聲子排序重整，程式剛運行時此指令無作用??? 只有開始跑程式後才有作用???
+        ALLOCATE( mlost(iNcell(2), iNcell(3), 2) )
+        WRITE(*, *) "   Reading mlost..."
+        READ(LR, *) mlost
 
-CALL cellinfo !得到網格的性質：單位體積能量(聲子束數量整數化後)、該能量對應之群速、MFP、聲子束能量
+        CLOSE(LR)
 
-PRINT*,'# of phonons:: ', MAXVAL(iNnumcell),MINVAL(iNnumcell)
-PRINT*,MAXVAL(dTemp)
+        ALLOCATE( iNnumcell(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( iNbgcell(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( dEcell(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( dTemp(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( dEunit(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( dVunit(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( MFP(iNcell(1), iNcell(2), iNcell(3)) )
 
-END SUBROUTINE initialize
+
+        dArea = dLclen(2) * dLclen(3)
+        dVolume = dLclen(1) * dArea
+
+        IF (option(1).eq.3) THEN
+            ALLOCATE( dElost(iNcell(2), iNcell(3), 2) )
+            ALLOCATE( dEinject(iNcell(2), iNcell(3), 2, 2) )
+            ALLOCATE( dVinject(iNcell(2), iNcell(3), 2, 2) )
+            ALLOCATE( iNemit(iNcell(2), iNcell(3), 2) )
+            ALLOCATE( qflow(iNcell(2), iNcell(3)) )
+            ALLOCATE( qctrl0(iNcell(2), iNcell(3)) )
+            ALLOCATE( dEheatflux(iNcell(2), iNcell(3), 2) )
+            ALLOCATE( qctrl(iNcell(2), iNcell(3)) )
+            
+            dElost = 0d0
+            
+            SELECTCASE(WAY_HEAT)
+            CASE(1)
+            ! phonons injected at specified heat flux
+            !==========================================================
+                sumQ=0
+                qctrl0=0
+                READ(LR,*) sumQ
+                READ(LR,*) qctrl0
+                read(LR,*) abc
+                qctrl=qctrl0/sumQ
+            CASE(2)
+            ! phonons injected at specified temperatures
+            !==========================================================
+                dEheatflux(:,:,1)=TEMP_HEAT(1)
+                dEheatflux(:,:,2)=TEMP_HEAT(2)
+
+                Call proc_BC( dEheatflux(1:iNcell(2), 1:iNcell(3), 1), &
+                                        dEheatflux(1:iNcell(2), 1:iNcell(3), 2) )
+
+                DO k = 1, iNcell(3)
+                    DO j = 1, iNcell(2)
+                        CALL proc_energy( iCmat(1,j,k), TEMP_HEAT(1), tmp)
+                        dEheatflux(j, k, 1) = tmp * dVinject(j, k, iCmat(1,j,k), 1)
+                        CALL proc_energy( iCmat(iNcell(1), j, k), TEMP_HEAT(2), tmp)
+                        dEheatflux(j, k, 2) = tmp * dVinject(j, k, iCmat(iNcell(1), j, k), 2)
+                    ENDDO
+                ENDDO
+                dEheatflux = dEheatflux / 4d0 * dArea * dt
+                ! dEheatflux:
+                !       The energy that should be injected at each time step
+                !       and each boundary element.
+            ENDSELECT
+            !==========================================================
+        ENDIF
+
+        CALL proc_reorder
+        CALL cellinfo
+
+    END SUBROUTINE initialize
 !============================================================================
 SUBROUTINE restart
 IMPLICIT NONE
 
-WRITE(LW3,*) bundle,dt,time,iNcell 
+WRITE(LW3,*) bundle,dt,time,iNcell
 WRITE(LW3,*) dLdomain,dLclen,option,DPP,DPPB
 WRITE(LW3,*) dEheatflux0/(dArea*dt*DBLE(iNcell(2)*iNcell(3)))
 WRITE(LW3,*) iNprop,iNph
@@ -127,36 +182,5 @@ IF (WAY_HEAT.eq.1) THEN
 ENDIF
 
 END SUBROUTINE restart
-!============================================================================
-SUBROUTINE output_pure(iter,n1,n2,noutput)
-    IMPLICIT NONE
-    INTEGER*4::i,j,k,iter,N,n1,n2,noutput
-    REAL*8:: Tmp,tot
-    REAL*8,ALLOCATABLE :: Tzoft(:,:,:)   
-
-    IF (n1.eq.1) THEN
-        ALLOCATE( Tzoft(iNcell(1),iNcell(2),iNcell(3)) )        
-        Tzoft = 0                       
-    ENDIF
-
-    DO k=1,iNcell(3)
-        DO j=1,iNcell(2)
-            DO i=1,iNcell(1)
-                tot=tot+dEcell(i,j,k)
-                CALL Etable(iCmat(i,j,k),1,dEcell(i,j,k),Tmp)
-                IF (n1.eq.1) Tzoft(i,j,k)=Tmp                           
-                IF (n2.eq.1) Tz(i,j,k)=Tz(i,j,k)+Tmp
-            ENDDO
-        ENDDO
-    ENDDO
-
-    IF (n1.eq.1) THEN
-        WRITE(LW1,*) time,iNcell,dLclen
-        WRITE(LW1,*) Tzoft 
-        DEALLOCATE( Tzoft )  
-        n1=0                     
-    ENDIF
-                                       
-END SUBROUTINE output_pure
 !============================================================================
 END MODULE mod_IO

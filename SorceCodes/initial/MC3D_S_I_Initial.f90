@@ -7,44 +7,74 @@
 PROGRAM initial3D
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4 :: NperCell
+INTEGER*4:: NperCell
 
-!WRITE(*, *)'initial temperature T(Ge), T(Si) in K = '
-!READ*,T1,T2
-!WRITE(*, *) 'time increment dt (ps) = '
-!READ*,dt
-!WRITE(*, *)'dLdomain(1:2) (nm),dwidth (nm),iNcell(1:2) ='
-!READ*,dLdomain,dwidth,iNcell
+    WRITE(*,*) 'INPUT THE CASE NAME(NO .''TXT'', NO ''_GRIDFILE''): '
+    READ(*,"(A72)") casename
 
-! for test01
-    abc=1
-    dt=1d0
-    dLdomain(1)=440d0
-    dLdomain(2)=110d0
-    dLdomain(3)=110d0
-    iNcell(1)=40
-    iNcell(2)=22
-    iNcell(3)=22
-
-    dLclen=dLdomain/DBLE(iNcell)
-
-    ALLOCATE( iCmat(iNcell(1),iNcell(2),iNcell(3)) )
-    ALLOCATE( dEdiff(iNcell(1),iNcell(2),iNcell(3)) )
-    ALLOCATE( dTemp(iNcell(1),iNcell(2),iNcell(3)) )
-    ALLOCATE( dVunit(iNcell(1),iNcell(2),iNcell(3)) )
-    ALLOCATE( dEunit(iNcell(1),iNcell(2),iNcell(3)) )
-    ALLOCATE( qctrl(iNcell(2),iNcell(3)) )
-
+    ! Read material tables
     CALL readtable
+
+    ! Set up the computational domain
     CALL domain(NperCell)
+
+    ! Allocate memory
+    CALL alloc_variables
+
+    ! Set up the nanostructure or material distribution
     CALL nanostructure
+
+    ! Set up initial temperature field
+    CALL temperature
+
+    ! Calculate properties of phonons and elements
     CALL properties(NperCell)
+
+    ! Output to initial file
     CALL output
 
-    DEALLOCATE( iCmat, dEdiff, dTemp, dVunit )
-    DEALLOCATE( dEunit, Ge_table, Si_Table, phn )
+    ! Deallocate memory
+    CALL Dealloc_variables
 
 END PROGRAM initial3D
+!======================================================================
+!======================================================================
+SUBROUTINE alloc_variables
+USE mod_VARIABLES
+IMPLICIT NONE
+
+    WRITE(*, *) 'Allocating Memory...'
+    ALLOCATE( iCmat(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( dEcell(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( dEunit(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( dVunit(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( MFP(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( dTemp(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( dEdiff(iNcell(1), iNcell(2), iNcell(3)) )
+    ALLOCATE( iNnumcell(iNcell(1), iNcell(2), iNcell(3)) )
+    WRITE(*, *) 'Allocating Memory Has Finished.'
+
+END SUBROUTINE alloc_variables
+!======================================================================
+!======================================================================
+SUBROUTINE Dealloc_variables
+USE mod_VARIABLES
+IMPLICIT NONE
+
+    WRITE(*, *) 'Deallocating Memory...'
+    DEALLOCATE( iCmat )
+    DEALLOCATE( dEcell )
+    DEALLOCATE( dEunit )
+    DEALLOCATE( dVunit )
+    DEALLOCATE( MFP )
+    DEALLOCATE( dTemp )
+    DEALLOCATE( dEdiff )
+    DEALLOCATE( iNnumcell )
+
+    DEALLOCATE( Ge_table, Si_Table, phn, dPpool, mlost )
+    WRITE(*, *) 'Deallocating Memory Has Finished.'
+
+END SUBROUTINE Dealloc_variables
 !======================================================================
 !======================================================================
 SUBROUTINE readtable
@@ -58,8 +88,8 @@ IMPLICIT NONE
 
     READ(LRGe, *) iN_Ge1, iN_Ge2
     READ(LRSi, *) iN_Si1, iN_Si2
-    WRITE(*, *) "iN_Ge1 = ", iN_Ge1, "iN_Ge2 = ", iN_Ge2
-    WRITE(*, *) "iN_Si1 = ", iN_Si1, "iN_Si2 = ", iN_Si2
+    WRITE(*, *) "   iN_Ge1 = ", iN_Ge1, "iN_Ge2 = ", iN_Ge2
+    WRITE(*, *) "   iN_Si1 = ", iN_Si1, "iN_Si2 = ", iN_Si2
 
     ALLOCATE( Ge_table(iN_Ge1, iN_Ge2) )
     ALLOCATE( Si_table(iN_Si1, iN_Si2) )
@@ -73,8 +103,10 @@ IMPLICIT NONE
     dU_Ge=Ge_table(3,2)-Ge_table(3,1)
     Si_start=Si_table(3,1)
     dU_Si=Si_table(3,2)-Si_table(3,1)
-    WRITE(*, *) "Ge_start = ", Ge_start, "dU_Ge = ", dU_Ge
-    WRITE(*, *) "Si_start = ", Si_start, "dU_Si = ", dU_Si
+    WRITE(*, *) "   Ge_start = ", Ge_start, "dU_Ge = ", dU_Ge
+    WRITE(*, *) "   Si_start = ", Si_start, "dU_Si = ", dU_Si
+
+    WRITE(*, *) "Reading Material Tables Has Finished."
 
 END SUBROUTINE readtable
 !======================================================================
@@ -84,18 +116,20 @@ USE mod_VARIABLES
 IMPLICIT NONE
 INTEGER*4 :: NperCell
 
-    option(1)=3
-    option(2)=2
-    option(3)=2
+    WRITE(*, *) 'Enter the dimension Lx, Ly, Lz of the model:'
+    READ(*, *) dLdomain
 
-    DPP=0
-    DPPB=0
-    dEheatflux0=20d0 ! meV/(ps.nm^2)
+    WRITE(*, *) 'Enter the number of elements on x, y, z direction:'
+    READ(*, *) iNcell
 
-    iNprop=8
-    NperCell=200
+    dLclen = dLdomain / DBLE(iNcell)
+    dArea = dLclen(2) * dLclen(3)
+    dVolume = dLclen(1) * dArea
 
-    time0=0d0
+    iNprop = 8
+
+    WRITE(*, *) 'Enter the min. number of phonon group(NperCell) in elements:'
+    READ(*, *) NperCell
 
 END SUBROUTINE domain
 !======================================================================
@@ -104,12 +138,22 @@ SUBROUTINE nanostructure
 USE mod_VARIABLES
 IMPLICIT NONE
 
-    iCmat=1
-    iCmat(:,7:16,7:16)=2
-
-    dTemp=330d0
+    WRITE(*, *) 'Setting Up Nanostructure or Material Distribution...'
+    iCmat = 1
+    WRITE(*, *) 'Finished.'
 
 END SUBROUTINE nanostructure
+!======================================================================
+!======================================================================
+SUBROUTINE temperature
+USE mod_VARIABLES
+IMPLICIT NONE
+
+    WRITE(*, *) 'Setting Up Initial Temperature Field...'
+    dTemp = 330d0
+    WRITE(*, *) 'Finished.'
+
+END SUBROUTINE temperature
 !======================================================================
 !======================================================================
 SUBROUTINE properties(NperCell)
@@ -121,116 +165,92 @@ REAL*8,ALLOCATABLE::rannum(:,:)
 
     WRITE(*, *) "Assigning Properties to Each Mesh..."
 
-    dArea = dLclen(2) * dLclen(3)
-    dVolume = dLclen(1) * dArea
-
     m_min = 100000000
 
-    DO k=1,iNcell(3)
-        DO j=1,iNcell(2)
-            DO i=1,iNcell(1)
-                s=iCmat(i,j,k)
-                CALL energy(s, dTemp(i,j,k), dEdiff(i,j,k))     ! U
-                CALL ETable(s, 4, dEdiff(i,j,k), dVunit(i,j,k)) ! V
-                CALL ETable(s, 2, dEdiff(i,j,k), dEunit(i,j,k)) ! N
-                CALL ETable(1, 5, dEdiff(i,j,k), dTemp(i,j,k))  ! MFP
+    DO k = 1, iNcell(3)
+        DO j = 1, iNcell(2)
+            DO i = 1, iNcell(1)
+                s = iCmat(i, j, k)
+                CALL energy( s, dTemp(i, j, k), dEcell(i, j, k) )     ! U
+                CALL ETable( s, 4, dEcell(i, j, k), dVunit(i, j, k) ) ! V
+                CALL ETable( s, 2, dEcell(i, j, k), dEunit(i,j,k)) ! N
+                CALL ETable( s, 5, dEcell(i, j, k), MFP(i,j,k))  ! MFP
+                !dEcell is energy density rather than energy
 
-                m=INT( dEunit(i,j,k) * dVolume + 0.5d0)
-                IF (m.le.m_min(s)) THEN
-                    m_min(s)=m
-                    N0(s)=dEunit(i,j,k)
-                    Eng0(s)=dEdiff(i,j,k)
+                m = INT( dEunit(i, j, k) * dVolume + 0.5d0)
+                !dEunit is number density currently.
+                !m is number of phonons in an element
+
+                IF ( m.le.m_min(s) ) THEN
+                    m_min(s) = m
+                    N0(s) = dEunit(i, j, k) !dEunit is number density
+                    Eng0(s) = dEcell(i, j, k)
                 ENDIF
             ENDDO
         ENDDO
     ENDDO
 
-    WRITE(*, *) "   Model Check:"
-    WRITE(*, *) "   dt, dLclen = ", dt, dLclen
-    WRITE(*, *) "   MFP = ", MINVAL(dTemp)
-    WRITE(*, *) "   tau = ", MINVAL(dTemp) / MAXVAL(dVunit)
-    WRITE(*, *) "   dz/vel = ", dLclen/MAXVAL(dVunit)
-    WRITE(*, *) "   vel = ", MAXVAL(dVunit)
-    WRITE(*, *) " "
+    dt = MAXVAL( dLclen ) * 0.5 / MAXVAL( dVunit )
 
-    !! choose the weighting number under the condition that there are
-    !! at least NperCell phonons in a cell if necessary
-    IF (m_min(1).le.m_min(2)) THEN
-        m=m_min(1)
-        iNph=1
-    ELSE
-        m=m_min(2)
-        iNph=2
-    ENDIF
+    bundle=MAX( 1d0, DBLE(MINVAL(m_min)) / DBLE(Npercell) )
 
-    !!-----------------------------------------------------------------
-    !! choice 1: same number of phonons per phonon bundle
-    !! choice 2: same energy per phonon bundle
-    !! choice 3: same number of phonon bundles per cell
-    bundle=MAX( 1d0, DBLE(m)/DBLE(Npercell) )
-    !! Uncomment the following IF section for choice 2 or 3
-    !!IF (iNph.eq.1) THEN
-        !!bundle(2)=(bundle(1)*Eng0(1)/N0(1))/(Eng0(2)/N0(2)) !choice 2
-        !!bundle(2)=(bundle(1)*N0(2))/N0(1)                   !choice 3
-    !!ELSE
-        !!bundle(1)=(bundle(2)*Eng0(2)/N0(2))/(Eng0(1)/N0(1)) !choice 2
-        !!bundle(1)=(bundle(2)*N0(1))/N0(2)                   !choice 3
-    !!ENDIF
+    iNmakeup = MAXVAL( INT( N0 * dVolume / bundle + 0.5d0 ) ) * 5
+    ALLOCATE( dPpool(6, iNmakeup, iNcell(2), iNcell(3), 2) )
+    ALLOCATE( mlost(iNcell(2), iNcell(3), 2) )
+    dPpool = 0d0
+    mlost = 0
 
-    WRITE(*, *)'# of phonons per bundle = ',bundle
-    WRITE(*, *)'dEcell = ',Eng0
-    WRITE(*, *)'# of phonon bundles per cell = ',INT(N0*dVolume/bundle+0.5d0)
-    WRITE(*, *)'energy per phonon bundle = ',Eng0/N0*bundle
-
-    iNmakeup = MAXVAL( INT( N0 * dVolume / bundle + 0.5d0 ) )*2
-    ALLOCATE( dPpool(6,iNmakeup,iNcell(2),iNcell(3),2) )
-    dPpool=0
-
-    dTemp=dEdiff ! U now
-    dEdiff=0
     iNph=0
-
     DO k = 1, iNcell(3)
         DO j = 1, iNcell(2)
             DO i = 1, iNcell(1)
-                s = iCmat(i,j,k)
-                m = INT( dEunit(i,j,k) * dVolume / bundle(s) + 0.5d0 )
-                IF (m.lt.1) PAUSE
-                dEdiff(i,j,k) = &
-                    dTemp(i,j,k) * dVolume - &
-                    DBLE(m) * bundle(s) * dTemp(i,j,k) / dEunit(i,j,k)
-                iNph=iNph+m
+                s = iCmat(i, j, k)
+                iNnumcell(i, j, k) = INT( dEunit(i, j, k) * dVolume / bundle(s) + 0.5d0 )
+                IF ( iNnumcell(i, j, k).lt.1 ) PAUSE
+                dEdiff(i, j, k) = &
+                    dEcell(i, j, k) * dVolume - &
+                    DBLE(m) * bundle(s) * dEcell(i, j, k) / dEunit(i, j, k)
             ENDDO
         ENDDO
     ENDDO
 
-    WRITE(*, *)'total # of phonons = ',iNph
-    WRITE(*, *)'iNprop = ', iNprop
-!------------------------------------
+    iNph = SUM( iNnumcell )
     ALLOCATE( phn(iNprop, iNph) )
     phn=0d0
     iNph = 0
     DO k = 1, iNcell(3)
         DO j = 1, iNcell(2)
             DO i = 1, iNcell(1)
-                s=iCmat(i,j,k)
-                m=INT(dEunit(i,j,k)*dVolume/bundle(s)+0.5d0)
-                phn(6,iNph+1:iNph+m)=dTemp(i,j,k)/dEunit(i,j,k)*bundle(s)
-                phn(7,iNph+1:iNph+m)=dVunit(i,j,k)
-                phn(8,iNph+1:iNph+m)=iCmat(i,j,k)
-                ALLOCATE(rannum(m,5))
-                CALL RANDOM_NUMBER(rannum)
-                phn(1,iNph+1:iNph+m)=(DBLE(i-1)+rannum(1:m,1))*dLclen(1)
-                phn(2,iNph+1:iNph+m)=(DBLE(j-1)+rannum(1:m,2))*dLclen(2)
-                phn(3,iNph+1:iNph+m)=(DBLE(k-1)+rannum(1:m,3))*dLclen(3)
-                phn(4,iNph+1:iNph+m)=2d0*rannum(1:m,4)-1d0
-                phn(5,iNph+1:iNph+m)=M_PI_2*rannum(1:m,5)
+                s = iCmat(i, j, k)
+                m = INT( dEunit(i, j, k) * dVolume / bundle(s) + 0.5d0 )
+                phn(6, iNph+1:iNph+m) = dEcell(i, j, k) / dEunit(i, j, k) * bundle(s)
+                phn(7, iNph+1:iNph+m) = dVunit(i, j, k)
+                phn(8, iNph+1:iNph+m) = iCmat(i, j, k)
+                ALLOCATE( rannum(m, 5) )
+                CALL RANDOM_NUMBER( rannum )
+                phn(1, iNph+1:iNph+m) = ( DBLE(i-1) + rannum(:, 1) ) * dLclen(1)
+                phn(2, iNph+1:iNph+m) = ( DBLE(j-1) + rannum(:, 2) ) * dLclen(2)
+                phn(3, iNph+1:iNph+m) = ( DBLE(k-1) + rannum(:, 3) ) * dLclen(3)
+                phn(4, iNph+1:iNph+m) = 2d0 * rannum(:, 4)-1d0
+                phn(5, iNph+1:iNph+m) = M_PI_2*rannum(:, 5)
                 iNph=iNph+m
                 DEALLOCATE( rannum )
             ENDDO
         ENDDO
     ENDDO
 
+    IF ( iNph.ne.SUM(iNnumcell) ) PAUSE
+
+    WRITE(*, *) "   Model Check:"
+    WRITE(*, *) "   dt = ", dt
+    WRITE(*, *) "   dLclen = ", dLclen
+    WRITE(*, *) "   min. MFP = ", MINVAL(MFP)
+    WRITE(*, *) "   MAX. Vg = ",  MAXVAL(dVunit)
+    WRITE(*, *) "   # of phonons per bundle = ", bundle
+    WRITE(*, *) "   min. # of phonon bundles per cell = ", MINVAL( iNnumcell )
+    WRITE(*, *) "   MAX. # of phonon bundles per cell = ", MAXVAL( iNnumcell )
+    WRITE(*, *) "   Total # of phonons = ", iNph
+    WRITE(*, *) "   iNmakeup = ", iNmakeup
     WRITE(*, *) "Assigning Properties Has Finished."
 
 END SUBROUTINE properties
@@ -239,22 +259,37 @@ END SUBROUTINE properties
 SUBROUTINE output
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4::i, j
 
-    OPEN(LW1, file='initial.txt')
-    WRITE(LW1, *) bundle,dt,time0,iNcell
-    WRITE(LW1, *) dLdomain,dLclen,option,DPP,DPPB
-    WRITE(LW1, *) dEheatflux0
-    WRITE(LW1, *) iNprop,iNph
-    WRITE(LW1, *) iCmat
-    WRITE(LW1, *) phn(:, :5250000)
-    WRITE(LW1, *) dEdiff
-    WRITE(LW1, *) iNmakeup
-    WRITE(LW1, *) dPpool
+    WRITE(*, *) "Start to Output..."
+    OPEN(LW1, FILE=casename(1:LEN_TRIM(casename))//'_initial.txt')
+    WRITE(*, *) "   dt..."
+    WRITE(LW1, *) dt
+    WRITE(*, *) "   iter0..."
     WRITE(LW1, *) 0
-    WRITE(LW1, *) qctrl
-    WRITE(LW1, *) abc
+    WRITE(*, *) "   dLdomain..."
+    WRITE(LW1, *) dLdomain
+    WRITE(*, *) "   iNcell..."
+    WRITE(LW1, *) iNcell
+    WRITE(*, *) "   dLclen..."
+    WRITE(LW1, *) dLclen
+    WRITE(*, *) "   bundle..."
+    WRITE(LW1, *) bundle
+    WRITE(*, *) "   iNprop, iNph..."
+    WRITE(LW1, *) iNprop, iNph
+    WRITE(*, *) "   iNmakeup..."
+    WRITE(LW1, *) iNmakeup
+    WRITE(*, *) "   iCmat..."
+    WRITE(LW1, *) iCmat
+    WRITE(*, *) "   phn..."
+    WRITE(LW1, *) phn
+    WRITE(*, *) "   dEdiff..."
+    WRITE(LW1, *) dEdiff
+    WRITE(*, *) "   dPpool..."
+    WRITE(LW1, *) dPpool
+    WRITE(*, *) "   mlost..."
+    WRITE(LW1, *) mlost
     CLOSE(LW1)
+    WRITE(*, *) "Finished."
 
 END SUBROUTINE output
 !======================================================================
