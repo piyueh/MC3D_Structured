@@ -46,6 +46,7 @@ CONTAINS
 
     END SUBROUTINE advance
 !======================================================================
+!======================================================================
     SUBROUTINE proc_advection(i0, j0, k0, cellbdy0, N, ph, nc)
     IMPLICIT NONE
     INTEGER*4:: i0, j0, k0, hit, true, nc
@@ -82,7 +83,7 @@ CONTAINS
             ENDIF
 
 
-            DO WHILE ( DABS(dtremain).le.zero_tol )
+            DO WHILE ( DABS( dtremain ).le.zero_tol )
 
                 DO i = 1, 3
                     IF ( vel(i).gt.0d0 ) THEN
@@ -108,8 +109,9 @@ CONTAINS
                 hit = idxt(1)
                 dtused = MIN( ds(hit), dtremain )
                 ph(1:3, m) = ph(1:3, m) + dtused * vel
-                CALL proc_intrinsicscattering(phcell, ph(1:iNprop, m),&
-                                                dtused, true)
+                CALL proc_intrinsicscattering( phcell, &
+                                               ph(1:iNprop, m), &
+                                               dtused, true )
 
                 !------------------------------------------------------
                 ! true = 1 represents that the intrinsic scattering
@@ -129,23 +131,42 @@ CONTAINS
 
                     !--------------------------------------------------
                     ! Adjust whether the phonon still go through the
-                    ! element surface to a neighbor element or will be
-                    ! reflected back to the same element.
+                    ! element surface to a neighbor element (true = 0),
+                    ! ,go through the boundary of computational domain 
+                    ! (true = -1), or will be reflected back to the 
+                    ! same element (true = 1).
                     !--------------------------------------------------
                     IF ( ( face(hit) * vel(hit) ).gt.0 ) THEN
                         CALL proc_outdomain( phcell, cellbdy, hit, &
                                              face(hit), &
                                              ph(1:iNprop, m), &
                                              dtremain, true )
-                        IF (true.eq.0) CALL proc_transmissivity(phcell,cellbdy,hit,face(hit),ph(1:iNprop,m),vel,true)
+                        !----------------------------------------------
+                        ! true = 0, the phonon still go through the
+                        ! element surface to a neighbor element.
+                        ! proc_transmissivity will adjust whether the
+                        ! boundary of this element is a material/grain 
+                        ! interface
+                        !----------------------------------------------
+                        IF ( true.eq.0 ) &
+                            CALL proc_transmissivity( phcell, cellbdy,&
+                                                      hit, face(hit), &
+                                                      ph(1:iNprop, m),&
+                                                      vel, true )
                     ENDIF
 
-                    IF (true.eq.1) THEN !若有發生邊界反射，或介面鏡/亂穿透or反射則true為1，且在proc_outdomain與proc_transmissivity只決定方向和群速，而沒決定速度分量
-                        vel(3)=ph(7,m)*DSQRT(1d0-ph(4,m)**2)
-                        vel(1)=ph(7,m)*ph(4,m)
-                        vel(2)=vel(3)*DCOS(ph(5,m))
-                        vel(3)=vel(3)*DSIN(ph(5,m))
+                    !--------------------------------------------------
+                    ! If true is 1, it represents the direction is 
+                    ! changed.  The velocity vector therefore must be 
+                    ! changed, too.
+                    !--------------------------------------------------
+                    IF ( true.eq.1 ) THEN
+                        vel(3) = ph(7, m) * DSQRT( 1d0 - ph(4,m)**2 )
+                        vel(1) = ph(7, m) * ph(4, m)
+                        vel(2) = vel(3) * DCOS( ph(5, m) )
+                        vel(3) = vel(3) * DSIN( ph(5, m) )
                     ENDIF
+                    
                 ELSE
                     dtremain = 0d0
                 ENDIF
@@ -177,14 +198,16 @@ CONTAINS
         ! prob represents the probability of scattering occured during
         ! time interval dt1
         prob = 1d0 - &
-            DEXP( -dt1 * phm(7) / MFP( phcell(1), phcell(2), phcell(3) ) )
+               DEXP( -dt1 * phm(7) / &
+               MFP( phcell(1), phcell(2), phcell(3) ) )
 
         IF ( rannum1(1).le.prob ) THEN
             phm(4) = 2D0 * rannum1(2) - 1D0
             phm(5) = M_PI_2 * rannum1(3)
             dEdiff(phcell(1), phcell(2), phcell(3)) = &
                             dEdiff(phcell(1), phcell(2), phcell(3)) + &
-                            phm(6) - dEunit(phcell(1), phcell(2), phcell(3))
+                            phm(6) - &
+                            dEunit(phcell(1), phcell(2), phcell(3))
             phm(6) = dEunit(phcell(1), phcell(2), phcell(3))
             phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
             phm(8) = iCmat(phcell(1), phcell(2), phcell(3))
@@ -206,111 +229,161 @@ CONTAINS
     REAL*8:: tau21, tau12
     REAL*8:: rannum1(2)
     !------------------------------------------------------------------
-    ! This subroutine is used to
+    ! This subroutine is used to determine whether the phonon encounter
+    ! a material/grain interface when it in going through a element's
+    ! boundary.  And determine whether the response is diffused or
+    ! specular.
     !
-    ! phcell: the element index of the phonon
-    ! phm: the properties of the phonon
-    ! dt1: the time needed for the movement
-    ! true: the subroutine will return value 1 to this parameter if the
-    !       scattering occurs and value 0 otherwise
+    ! phcell: the index of the element in which the target phonon is.
+    ! cellbdy: the coordinate of the 6 surfaces of the element
+    ! hit: the direction which the target phonon will transmit through
+    ! face0: the surface which the target phonon will transmit through
+    ! phm: the properties of target phonon
+    ! vel: the velocity vector of the target phonon
+    ! true: the subroutine will return true = 1 if the element's 
+    !       boundary is a material/grain interface
     !------------------------------------------------------------------
-    !phcell：該聲子目前所在網格，cellbdy：所在網格的6個截面在模擬區域的位置，hit：聲子要碰撞的面的方向(1/2/3)，
-    !face0：聲子要碰撞的面(1代表正hit方向，-1代表負hit方向)，phm：該聲子的所有性質，vel：速度分量，
-    !true：最後傳回true(1表此聲子遇上絕熱邊界反射了，-1表遇上週期性邊界，被移到另一邊邊界，或是穿透到domain外)
 
-    !------------------
-    neighbor=phcell
-    neighbor(hit)=neighbor(hit)+face0 !所以neighbor變成聲子即將移動過去的網格(OR SAY 新網格)
+        neighbor = phcell
+        neighbor(hit) = neighbor(hit) + face0
+        ! neighbor now is the element which the phonon will go into.
 
-    IF (iCmat(neighbor(1),neighbor(2),neighbor(3)).eq.iCmat(phcell(1),phcell(2),phcell(3))) THEN !兩個網格材料相同，無折射現象
-        IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel) !若聲子是穿過熱流方向的截面，則要先判斷是不是有穿過domain中間截面，因為要記錄中間截面處的熱通量
-	    tau12 = 1d0 !穿透率100%
-	    phcell = neighbor !聲子所在網格改變為新網格
-	    cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !聲子所在網格的兩端截面(聲子穿透方向)在domain位置相應改變
+        IF ( iCmat(neighbor(1), neighbor(2), neighbor(3)).eq. &
+                          iCmat(phcell(1), phcell(2), phcell(3)) ) THEN
+        
+            IF ( hit.eq.1 ) CALL Compute_qflux(phcell,phm,vel)
+            tau12 = 1d0
+            phcell = neighbor
+            cellbdy(1:2, hit) = cellbdy(1:2, hit) + &
+                                              dLclen(hit) * DBLE(face0)
 
-    ELSE ! hit the interface
-        ALLOCATE( rannum1(2) )
-	    CALL random_number(rannum1)
-	    CALL proc_Energy(iCmat(neighbor(1),neighbor(2),neighbor(3)),dTemp(phcell(1),phcell(2),phcell(3)),neighborE) !用當前網格溫度，計算移動目的網格的單位體積能量(U2)
-        CALL Etable(iCmat(neighbor(1),neighbor(2),neighbor(3)),4,neighborE,neighborV) !用上一步驟計算的能量求得，當前網格溫度但材料為目的網格材料時的群速(v2)
-        !----------------------------------------------------------------------------
-	    IF (rannum1(1).le.DPP(hit)) THEN ! 鏡穿/反射
+        ELSE ! hit the interface
+    
+            CALL RANDOM_NUMBER( rannum1 )
+            !----------------------------------------------------------
+            ! Note:
+            !   Use the temperature of current element and the material
+            !   of the neighbor element to calculate the properties of 
+            !   the neighbor element which the phonon will go into.
+            !----------------------------------------------------------
+            CALL proc_Energy( &
+                        iCmat(neighbor(1), neighbor(2), neighbor(3)), &
+                        dTemp(phcell(1), phcell(2), phcell(3)), &
+                        neighborE ) 
+            CALL Etable( iCmat(neighbor(1), neighbor(2), neighbor(3)),&
+                         4, neighborE, neighborV )
+                     
+            IF ( rannum1(1).le.DPP(hit) ) THEN ! specular response
 
-	        ratio=(dEcell(phcell(1),phcell(2),phcell(3))*dVunit(phcell(1),phcell(2),phcell(3)))/(neighborE*neighborV) !(U1*v1)/(U2*v2)
-            dcosth2=vel(hit)/phm(7) !穿透方向的速度分量/速度，即入射角的cos值
-	        dsinth2=DSQRT((1d0-dcosth2**2)*ratio) !折射角的sin值
-	        tau12=0 !若全反射，tau12不會被更改，因此後續會被判斷為鏡反射
+                ratio = (dEcell(phcell(1), phcell(2), phcell(3)) * &
+                        dVunit(phcell(1), phcell(2), phcell(3))) / &
+                        (neighborE * neighborV) !(U1*v1)/(U2*v2)
+                dcosth2 = vel(hit) / phm(7) ! cos(theta1)
+                dsinth2 = DSQRT( (1d0 - dcosth2**2) * ratio )
+                tau12=0d0
+            
+                !------------------------------------------------------
+                ! If dsinth2 > 1, it represents total reflection. Then, 
+                ! tau12 keeps 0. Otherwise if dsinth2 < 1, refraction
+                ! occurs.
+                !------------------------------------------------------
+                IF ( dsinth2.lt.1d0 ) THEN
+                    rho1 = rho(iCmat(phcell(1), phcell(2), phcell(3)))
+                    rho2 = rho(iCmat(neighbor(1), neighbor(2), &
+                                                          neighbor(3)))
+                    dcosth2 = DSQRT( 1d0 - dsinth2**2 ) ! cos(theta2)
+                    tau12 = (rho2 * neighborV * dcosth2) / &
+                                                DABS( rho1 * vel(hit) )
+                    tau12 = 1d0 - ((1d0 - tau12) / (1d0 + tau12))**2
+                ENDIF
 
-	        IF (dsinth2.lt.1d0) THEN !若dsinth2 > 1，數學上無意義，物理上則為全反射
+                !------------------------------------------------------
+                ! If the random number is smaller tau12, the specular 
+                ! transmission occurs and IAMM is applied. Otherwise 
+                ! specular reflection occurs.  Only the direction and 
+                ! group velocity will be changed during specular 
+                ! transmission.  And only the direction will be changed
+                ! during specular reflaction.
+                !------------------------------------------------------
+                IF ( rannum1(2).lt.tau12 ) THEN
+                    IF ( hit.eq.1 ) &
+                                 CALL Compute_qflux( phcell, phm, vel )
+                    CALL Snells( ratio, phm, vel, hit )
+                    cellbdy(1:2, hit) = cellbdy(1:2, hit) + &
+                                              dLclen(hit) * DBLE(face0)
+                    phm(7) = dVunit( neighbor(1), neighbor(2), &
+                                                          neighbor(3) ) 
+                    phcell = neighbor
+                ELSE
+                    SELECTCASE(hit)
+                    CASE(1)
+                        phm(4) = -phm(4)
+                    CASE(2)
+                        phm(5) = M_PI - phm(5)
+                        IF ( phm(5).lt.0 ) phm(5) = phm(5) + M_PI_2
+                    CASE(3)
+                        phm(5) = M_PI_2 - phm(5)
+                    ENDIF
+                ENDIF
+	    
+            ELSE ! diffused response
+                tau12 = (neighborE * neighborV) / &
+                        (dEcell(phcell(1), phcell(2), phcell(3)) * &
+                        dVunit(phcell(1), phcell(2), phcell(3)) + &
+                        neighborE * neighborV)
+                !------------------------------------------------------
+                ! If the random number is smaller tau12, the diffused 
+                ! transmission occurs and DMM is applied. Otherwise 
+                ! diffused reflection occurs.  The direction and 
+                ! group velocity will be changed during both diffused 
+                ! transmission and reflaction.
+                !------------------------------------------------------
+                IF ( rannum1(2).le.tau12 ) THEN
+                    IF ( hit.eq.1 ) &
+                                 CALL Compute_qflux( phcell, phm, vel )
+                    cellbdy(1:2, hit) = cellbdy(1:2, hit) + &
+                                                dLclen(hit)*DBLE(face0)
+                    CALL diffuseB( phm, hit, face0, 1 )
+                    phm(7) = dVunit(neighbor(1), neighbor(2), neighbor(3))
+                    phcell = neighbor
+                ELSE
+                    CALL diffuseB( phm, hit, face0, -1 )
+                    phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
+                ENDIF
+            ENDIF
+	    
+            true = 1
+        
+        ENDIF
 
-	            rho1=rho(iCmat(phcell(1),phcell(2),phcell(3))) !聲子所在網格的材料密度
-		        rho2=rho(iCmat(neighbor(1),neighbor(2),neighbor(3))) !目的網格的材料密度
-		        dcosth2=DSQRT(1d0-dsinth2**2) !此時dcosth2變成折射角的cos值
-		        tau12=(rho2*neighborV*dcosth2)/DABS(rho1*vel(hit))
-		        tau12=1d0-((1d0-tau12)/(1d0+tau12))**2  !鏡穿透率
-
-	        ENDIF
-
-	        IF (rannum1(2).lt.tau12) THEN !! 鏡穿透 (IAMM)
-	            IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel)
-	            CALL Snells( ratio,phm,vel,hit ) !決定折射(穿透)後的移動方向
-	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0)
-		        !dEdiff(neighbor(1),neighbor(2),neighbor(3))=dEdiff(neighbor(1),neighbor(2),neighbor(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
-                !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
-		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !聲子只會改變群速!
-		        phcell = neighbor !聲子所屬網格改變
-	        ELSE !! 鏡反射
-	            IF (hit.eq.1) THEN
-		            phm(4)=-phm(4)
-		        ELSE IF (hit.eq.2) THEN
-		            phm(5)=M_PI-phm(5)
-			        IF (phm(5).lt.0) phm(5)=phm(5)+M_PI_2
-		        ELSE ! hit.eq.3
-		  	        phm(5)=M_PI_2-phm(5)
-		        ENDIF
-		        !鏡反射除了移動方向改變，其他全部都不會變
-	        ENDIF
-	    !----------------------------------------------------------------------------
-	    ELSE ! 亂穿/反射
-            tau12=(neighborE*neighborV)/(dEcell(phcell(1),phcell(2),phcell(3))*dVunit(phcell(1),phcell(2),phcell(3))+neighborE*neighborV) !亂射時的穿透率
-	        IF (rannum1(2).le.tau12) THEN !! 亂穿透 (DAMM)
-	            IF (hit.eq.1) CALL Compute_qflux(phcell,phm,vel)
-	            cellbdy(1:2,hit)=cellbdy(1:2,hit)+dLclen(hit)*DBLE(face0) !聲子所屬網格改變
-		        !dEdiff(neighbor(1),neighbor(2),neighbor(3))=dEdiff(neighbor(1),neighbor(2),neighbor(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
-		        !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
-		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-		        CALL diffuseB( phm,hit,face0,1 ) !決定亂反/穿射後的方向
-                phm(7)=dVunit(neighbor(1),neighbor(2),neighbor(3)) !只會改變群速!!!!!
-		        phcell = neighbor !聲子所屬網格改變
-            !----------------------------------------------------------------------------
-	        ELSE !! 亂反射 (DAMM)
-	            !dEdiff(phcell(1),phcell(2),phcell(3))=dEdiff(phcell(1),phcell(2),phcell(3))+phm(6)-dEunit(phcell(1),phcell(2),phcell(3))
-		        !phm(6)=dEunit(phcell(1),phcell(2),phcell(3))
-		        !phm(8)=iCmat(phcell(1),phcell(2),phcell(3))
-		        CALL diffuseB( phm,hit,face0,-1 ) !決定亂反/穿射後的方向
-                phm(7)=dVunit(phcell(1),phcell(2),phcell(3)) !只會改變群速!!!!!
-	        ENDIF
-	    ENDIF
-
-	    !無論是鏡亂/反射穿射，聲子能量通通都不會變，而除了鏡反射只改變方向外，其他三種情況會改變方向與群速
-!----------------------------------------------------------------------------
-        true = 1
-	    DEALLOCATE( rannum1 )
-    ENDIF
-
-END SUBROUTINE proc_transmissivity
+    END SUBROUTINE proc_transmissivity
+!======================================================================
 !======================================================================
     SUBROUTINE proc_outdomain( phcell, cellbdy, hit, &
                                             face0, phm, dtremain, true)
     IMPLICIT NONE
     INTEGER*4:: phcell(3), hit, face0, true, judge, j, k
     REAL*8:: phm(iNprop), cellbdy(2,3), dtremain, tmp, rannum
-    !判斷聲子是否會離開domain，若離開的話，依照bc不同，改變性質
-    !phcell：該聲子目前所在網格，cellbdy：所在網格的6個截面在模擬區域的位置，hit：聲子要碰撞的面的方向(1/2/3)，
-    !face0：生子要碰撞的面(1代表正的hit方向，-1代表負的hit方向)，phm：該聲子的所有性質，dtremail：聲子剩餘運動時間，
-    !true：最後傳回true(1表此聲子遇上絕熱邊界反射了，-1表遇上週期性邊界，被移到另一邊邊界，或是穿透到domain外)
-    !!! The first and the last cells must belong to the same material.
+    !------------------------------------------------------------------
+    ! This subroutine adjust whether the target phonon will leave the
+    ! computational domain.  If this occurs, it will modify some
+    ! properties of the phonon according to the boundary conditions.
+    !
+    ! phcell: the index of the element in which the target phonon is.
+    ! cellbdy: the coordinate of the 6 surfaces of the element
+    ! hit: the direction which the target phonon will transmit through
+    ! face0: the surface which the target phonon will transmit through
+    !        1 represent positive surface, -1 otherwise
+    ! phm: the properties of target phonon
+    ! dtremail: the remaining drift time of target phonon
+    ! true: the subroutine will return 1, which represents the phonon 
+    !       has been reflected into the computational domain again. 
+    !       Othereise, it will return -1, which represents the phonon
+    !       has transmitted through the domain boundary.
+    !
+    ! P.S. In current version. The first and the last cells must belong
+    !      to the same material.
+    !------------------------------------------------------------------
     
         CALL RANDOM_NUMBER( rannum )
 
@@ -320,17 +393,28 @@ END SUBROUTINE proc_transmissivity
                                                               judge = 1
 
         IF ( ( phcell(hit).eq.1 ).and.( face0.lt.0 ) judge = -1
-
+        
+        !--------------------------------------------------------------
+        ! The phonon will transmit through the domain 
+        ! boundary if judge.ne.0
+        !--------------------------------------------------------------
         IF ( judge.ne.0 ) THEN
 
             SELECTCASE( option(hit) )
-
+            !----------------------------------------------------------
+            ! option(hit):
+            !       1: adiabatic BC (the phonon will be reflected)
+            !       2: periodic BC (the phonon will be moved to the 
+            !                       other side)
+            !       3: thermal control BC
+            !----------------------------------------------------------
             CASE(1)
                 !------------------------------------------------------
                 ! rannum <= dPPB represents specular reflection, and
                 ! rannum > dPPPB represents diffused reflection.
                 !------------------------------------------------------
                 IF ( rannum.le.dPPB(hit) ) THEN
+                
                     SELECTCASE(hit)
                     CASE(1)
                         phm(4) = -phm(4)
@@ -340,7 +424,9 @@ END SUBROUTINE proc_transmissivity
                     CASE(3)
                         phm(5) = M_PI_2 - phm(5)
                     END SELECT
+                    
                 ELSE
+                
                     CALL diffuseB( phm, hit, judge, -1 )
                     dEdiff(phcell(1), phcell(2), phcell(3)) = &
                             dEdiff(phcell(1), phcell(2), phcell(3)) + &
@@ -349,6 +435,7 @@ END SUBROUTINE proc_transmissivity
                     phm(6) = dEunit(phcell(1), phcell(2), phcell(3))
                     phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
                     phm(8) = iCmat(phcell(1), phcell(2), phcell(3))
+                    
                 ENDIF
 
                 true = 1
@@ -361,49 +448,92 @@ END SUBROUTINE proc_transmissivity
                     phcell(hit) = 1
                     cellbdy(1, hit) = 0d0
                     cellbdy(2, hit) = dLclen(hit)
+                    
                 ELSE IF ( judge.eq.-1 ) THEN
+                
                     phm(hit) = dLdomain(hit)
                     phcell(hit) = iNcell(hit)
-                    cellbdy(2,hit) = dLdomain(hit)
-                    cellbdy(1,hit) = dLdomain(hit) - dLclen(hit)
+                    cellbdy(2, hit) = dLdomain(hit)
+                    cellbdy(1, hit) = dLdomain(hit) - dLclen(hit)
+                    
                 ENDIF
 
                 IF (true.eq.0) true=-1
 
             CASE(3) ! possible only if hit=1
 
-                j=phcell(2)
-                k=phcell(3)
-                IF (WAY_DIR.eq.1) THEN !WAY_DIR=1為週期入射法，2為亂數入設法
-                    IF (judge.eq.1) THEN !judge=1表示從正邊界離開(2面)
-                        mlost(j,k,1)=mlost(j,k,1)+1 !從2面離開的聲子會被1面的相同位置網格使用，所以直接記成1，代表這是給1面的邊界網格使用的
-                        IF (mlost(j,k,1).gt.iNmakeup) mlost(j,k,1)=1
-                        dPpool(1,mlost(j,k,1),j,k,1)=dtremain
-                        dPpool(2:5,mlost(j,k,1),j,k,1)=phm(2:5)
-                        dPpool(6,mlost(j,k,1),j,k,1)=phm(8)
+                j = phcell(2)
+                k = phcell(3)
+                
+                !------------------------------------------------------
+                ! WAY_DIR = 1 represents periodic injection method
+                ! ......... 2 represents random injection method
+                ! 
+                ! The 3rd index of mlost: 1 represents the higher 
+                ! temperature surface (entry of heat flux), and
+                ! 2 represents lower temperature surface (heat flux 
+                ! outlet.) The phonon leaves the computational 
+                ! domain from outlet (inlet) surface of heat flux, will
+                ! be saved into the pool of inlet (outlet) surface.
+                !------------------------------------------------------
+                IF ( WAY_DIR.eq.1 ) THEN
+                
+                    IF ( judge.eq.1 ) THEN
+                    
+                        mlost(j, k, 1) = mlost(j, k, 1) + 1
+                        IF ( mlost(j, k, 1).gt.iNmakeup ) &
+                                                    mlost(j, k, 1) = 1
+                        dPpool(1, mlost(j, k, 1), j, k, 1) = dtremain
+                        dPpool(2:5, mlost(j,k,1), j, k, 1) = phm(2:5)
+                        dPpool(6, mlost(j, k, 1), j, k, 1) = phm(8)
+                    
                     ELSE
-                        mlost(j,k,2)=mlost(j,k,2)+1
-                        IF (mlost(j,k,2).gt.iNmakeup) mlost(j,k,2)=1
-                        dPpool(1,mlost(j,k,2),j,k,2)=dtremain
-                        dPpool(2:5,mlost(j,k,2),j,k,2)=phm(2:5)
-                        dPpool(6,mlost(j,k,2),j,k,2)=phm(8)
+                    
+                        mlost(j, k, 2) = mlost(j, k, 2) + 1
+                        IF ( mlost(j, k, 2).gt.iNmakeup ) &
+                                                    mlost(j, k, 2) = 1
+                        dPpool(1, mlost(j, k, 2), j, k, 2) = dtremain
+                        dPpool(2:5, mlost(j, k, 2), j, k, 2) = phm(2:5)
+                        dPpool(6, mlost(j, k, 2), j, k, 2) = phm(8)
+                        
                     ENDIF
-                ENDIF !1-1-3
+                    
+                ENDIF
+                
+                 !WAY_HEAT=1為定熱通量，2為固定邊界溫度
+                 !-----------------------------------------------------
+                 ! WAY_HEAT = 1 represents constant heat flux
+                 ! ...........2 represents constant temperature
+                 !
+                 ! Constant heat flux (WAY_HEAT = 1) is not supported 
+                 ! in current version. (Not completed)
+                 !-----------------------------------------------------
+                IF ( WAY_HEAT.eq.1 ) THEN
+                    WRITE(*, *) "Constant heat flux (WAY_HEAT = 1)"//&
+                                " is not supported in current "//&
+                                "version. (The function is not "//&
+                                "completed)"
+                    WRITE(*, *) "The Program is Going to Shut Down "//&
+                                "in 5 Seconds."
+                    CALL SLEEP(5)
+                    STOP
+                    IF ( judge.eq.1 ) &
+                            dElost(j, k, 2) = dElost(j, k, 2) + phm(6)
+                    IF ( judge.eq.-1 ) &
+                            dElost(j, k, 1) = dElost(j, k, 1) + phm(6)
+                ENDIF
 
-                IF (WAY_HEAT.eq.1) THEN !WAY_HEAT=1為定熱通量，2為固定邊界溫度
-                    IF (judge.eq.+1) dElost(j,k,2)=dElost(j,k,2)+phm(6)
-                    IF (judge.eq.-1) dElost(j,k,1)=dElost(j,k,1)+phm(6)
-                ENDIF !1-1-4
-
-                phm(6)=0
-                dtremain=0
-                true=-1
+                phm(6) = 0
+                dtremain = 0
+                true = -1
 
             END SELECT
-        ENDIF !1
+            
+        ENDIF
 
 END SUBROUTINE proc_outdomain
-!============================================================================
+!======================================================================
+!======================================================================
 SUBROUTINE proc_createdelete !用來進行網格能量守恆時在網格內增或減聲子(內已包含重新整理)
     IMPLICIT NONE
     INTEGER*4::i,j,k,m,s,bg,ed,true
@@ -497,18 +627,27 @@ SUBROUTINE proc_createdelete !用來進行網格能量守恆時在網格內增�
 
     DEALLOCATE( nadd )
 END SUBROUTINE proc_createdelete
-!============================================================================
-SUBROUTINE Compute_qflux(phcell,phm,vel) !計算中間截面處的熱通量
+!======================================================================
+!======================================================================
+    SUBROUTINE Compute_qflux( phcell, phm, vel)
     IMPLICIT NONE
     INTEGER*4:: phcell(3)
-    REAL*8:: phm(7),vel(3)
+    REAL*8:: phm(7), vel(3)
+    !------------------------------------------------------------------
+    ! This subroutine will calculate the heat pass through the middle
+    ! plane of the computational domain in x-direction.
+    !------------------------------------------------------------------
 
-    IF (phcell(1).eq.iNcell(1)/2.and.vel(1).gt.0d0) THEN !聲子往正方向移動通過中間截面
-        qflow(phcell(2),phcell(3))=qflow(phcell(2),phcell(3))+phm(6)
-    ELSE IF (phcell(1).eq.iNcell(1)/2+1.and.vel(1).lt.0d0) THEN !聲子往負方向移動穿過中間截面
-        qflow(phcell(2),phcell(3))=qflow(phcell(2),phcell(3))-phm(6)
-    ENDIF
+        IF ( (phcell(1).eq.(iNcell(1)/2)) .and. (vel(1).gt.0d0) ) THEN 
+            qflow(phcell(2), phcell(3)) = qflow(phcell(2), phcell(3)) &
+                                          + phm(6)
+        ELSE IF ( (phcell(1).eq.iNcell(1)/2+1) .and. &
+                                                (vel(1).lt.0d0) ) THEN
+            qflow(phcell(2), phcell(3)) = qflow(phcell(2), phcell(3)) &
+                                          - phm(6)
+        ENDIF
 
-END SUBROUTINE Compute_qflux
-!============================================================================
+    END SUBROUTINE Compute_qflux
+!======================================================================
+!======================================================================
 END MODULE mod_ADVANCE
