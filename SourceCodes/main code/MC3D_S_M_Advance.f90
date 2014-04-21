@@ -500,7 +500,6 @@ CONTAINS
                     
                 ENDIF
                 
-                 !WAY_HEAT=1為定熱通量，2為固定邊界溫度
                  !-----------------------------------------------------
                  ! WAY_HEAT = 1 represents constant heat flux
                  ! ...........2 represents constant temperature
@@ -531,42 +530,64 @@ CONTAINS
             
         ENDIF
 
-END SUBROUTINE proc_outdomain
+    END SUBROUTINE proc_outdomain
 !======================================================================
 !======================================================================
-SUBROUTINE proc_createdelete !用來進行網格能量守恆時在網格內增或減聲子(內已包含重新整理)
+    SUBROUTINE proc_createdelete
     IMPLICIT NONE
-    INTEGER*4::i,j,k,m,s,bg,ed,true
-    REAL*8::random1,tmp
-    INTEGER*4,ALLOCATABLE::nadd(:,:,:)
-    REAL*8,ALLOCATABLE::rannum(:,:),newphn(:,:)
-    ALLOCATE( nadd(iNcell(1),iNcell(2),iNcell(3)) )
-    nadd=0
-    true=0
-    DO k=1,iNcell(3)
-        DO j=1,iNcell(2)
-            DO i=1,iNcell(1)
-                tmp=0.5d0*dEunit(i,j,k)
-                IF (dEdiff(i,j,k).ge.tmp) THEN
-                    nadd(i,j,k) = INT(dEdiff(i,j,k)/dEunit(i,j,k)+0.5d0)
-	                dEdiff(i,j,k)=dEdiff(i,j,k)-nadd(i,j,k)*dEunit(i,j,k)
-	                true=1
-                ELSE IF (dEdiff(i,j,k).lt.-tmp) THEN
-                    DO WHILE (dEdiff(i,j,k).lt.-tmp)
-	                    CALL random_number(random1)
-		                m=MIN(INT(iNbgcell(i,j,k)+random1*iNnumcell(i,j,k)+1),iNbgcell(i,j,k)+iNnumcell(i,j,k))
-		                IF (phn(6,m).gt.0) THEN
-		                    dEdiff(i,j,k)=dEdiff(i,j,k)+phn(6,m)
-		                    phn(6,m)=0
-		                    nadd(i,j,k)=nadd(i,j,k)-1
-	                    ENDIF
-	                ENDDO
-	                true=1
-                ENDIF
+    INTEGER*4:: i, j, k, m, s, bg, ed, true
+    REAL*8:: random1, tmp
+    REAL*8, ALLOCATABLE:: rannum(:, :), newphn(:, :)
+    !------------------------------------------------------------------
+    ! This subroutine is used to create or delete phonons in elements
+    ! to obey energy conservation.
+    !------------------------------------------------------------------
+    
+    
+        nadd = 0
+        true = 0
+        
+        DO k = 1, iNcell(3)
+            DO j = 1, iNcell(2)
+                DO i = 1, iNcell(1)
+                    tmp = 0.5d0 * dEunit(i, j, k)
+                    IF ( dEdiff(i, j, k).ge.tmp ) THEN
+                        
+                        nadd(i, j, k) = &
+                        INT( dEdiff(i, j, k) / dEunit(i, j, k) + 0.5d0)
+	                
+                        dEdiff(i, j, k) = &
+                                          dEdiff(i, j, k) - &
+                                          nadd(i, j, k) * &
+                                          dEunit(i, j, k)
+                        true = 1
+                    ELSE IF ( dEdiff(i, j, k).lt.-tmp ) THEN
+                        DO WHILE ( dEdiff(i, j, k).lt.-tmp )
+                            
+                            CALL RANDOM_NUMBER( random1 )
+                            
+                            s = iNnumcell(i, j, k)
+                            bg = iNbgcell(i, j, k)
+                            
+                            m = &
+                              MIN( INT( bg + random1 * s + 1 ), bg + s)
+                            
+                            IF ( phn(6, m).gt.0 ) THEN
+                                dEdiff(i, j, k) = dEdiff(i, j, k) + &
+                                                  phn(6, m)
+                                phn(6, m) = 0
+                                nadd(i, j, k) = nadd(i, j, k) - 1
+                            ENDIF
+                        
+                        ENDDO
+                        true = 1
+                    ENDIF
+                ENDDO
             ENDDO
         ENDDO
-    ENDDO
-    !-----------------------------
+    !------------------------------------------------------------------
+    ! 02:58 04/22/2014
+    !------------------------------------------------------------------
     IF (true.eq.1) THEN
         newiNph=iNph+SUM(nadd)
         ALLOCATE( newphn(iNprop,newiNph) )
@@ -625,7 +646,6 @@ SUBROUTINE proc_createdelete !用來進行網格能量守恆時在網格內增�
         ENDDO
     ENDIF
 
-    DEALLOCATE( nadd )
 END SUBROUTINE proc_createdelete
 !======================================================================
 !======================================================================

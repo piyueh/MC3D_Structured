@@ -47,6 +47,7 @@ REAL*8:: dLdomain(3), dPP(3), dPPB(3)
 INTEGER*4:: iNcell(3)
 REAL*8:: dLclen(3), dArea, dVolume  ! nm, nm^3
 INTEGER*4, ALLOCATABLE:: iNnumcell(:, :, :), iNbgcell(:, :, :)
+INTEGER*4, ALLOCATABLE:: nadd(:, :, :)
 REAL*8, ALLOCATABLE:: dEcell(:, :, :), dEunit(:, :, :)
 REAL*8, ALLOCATABLE:: dVunit(:, :, :), MFP(:, :, :)
 REAL*8, ALLOCATABLE:: dTemp(:, :, :), dEdiff(:, :, :)

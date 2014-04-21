@@ -1,16 +1,16 @@
-!****************************************************************************
+!**********************************************************************
 !   HEADING: MC3D - Structured Solver: I/O MODULE
 !   AUTHOR: MJ Huang, PY Chuang
 !   PURPOSE: This module handles the input/output processes.
 !   DATE: 2009.7.10
-!****************************************************************************
+!**********************************************************************
 MODULE mod_IO
 USE mod_VARIABLES
 USE mod_ROUTINES
 IMPLICIT NONE
-!############################################################################
+!#######################################################################
 CONTAINS
-!============================================================================
+!======================================================================
     SUBROUTINE readtable
     IMPLICIT NONE
 
@@ -41,8 +41,8 @@ CONTAINS
         CLOSE(LRSi)
 
     END SUBROUTINE readtable
-!============================================================================
-!============================================================================
+!======================================================================
+!======================================================================
     SUBROUTINE initialize(NorR)
     IMPLICIT NONE
     INTEGER*4:: idx, NorR
@@ -104,7 +104,7 @@ CONTAINS
         ALLOCATE( dEunit(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( dVunit(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( MFP(iNcell(1), iNcell(2), iNcell(3)) )
-
+        ALLOCATE( nadd(iNcell(1), iNcell(2), iNcell(3)) )
 
         dArea = dLclen(2) * dLclen(3)
         dVolume = dLclen(1) * dArea
@@ -137,21 +137,27 @@ CONTAINS
                 dEheatflux(:,:,1)=TEMP_HEAT(1)
                 dEheatflux(:,:,2)=TEMP_HEAT(2)
 
-                Call proc_BC( dEheatflux(1:iNcell(2), 1:iNcell(3), 1), &
-                                        dEheatflux(1:iNcell(2), 1:iNcell(3), 2) )
+                Call proc_BC( dEheatflux(1:iNcell(2), 1:iNcell(3), 1),&
+                              dEheatflux(1:iNcell(2), 1:iNcell(3), 2) )
 
                 DO k = 1, iNcell(3)
                     DO j = 1, iNcell(2)
-                        CALL proc_energy( iCmat(1,j,k), TEMP_HEAT(1), tmp)
-                        dEheatflux(j, k, 1) = tmp * dVinject(j, k, iCmat(1,j,k), 1)
-                        CALL proc_energy( iCmat(iNcell(1), j, k), TEMP_HEAT(2), tmp)
-                        dEheatflux(j, k, 2) = tmp * dVinject(j, k, iCmat(iNcell(1), j, k), 2)
+                        CALL proc_energy( iCmat(1,j,k), &
+                                                     TEMP_HEAT(1), tmp)
+                        dEheatflux(j, k, 1) = tmp * &
+                                        dVinject(j, k, iCmat(1,j,k), 1)
+                        CALL proc_energy( iCmat(iNcell(1), j, k), &
+                                                     TEMP_HEAT(2), tmp)
+                        dEheatflux(j, k, 2) = tmp * &
+                              dVinject(j, k, iCmat(iNcell(1), j, k), 2)
                     ENDDO
                 ENDDO
                 dEheatflux = dEheatflux / 4d0 * dArea * dt
+                !------------------------------------------------------
                 ! dEheatflux:
-                !       The energy that should be injected at each time step
-                !       and each boundary element.
+                !       The energy that should be injected at each time
+                !       step and each boundary element.
+                !------------------------------------------------------
             ENDSELECT
             !==========================================================
         ENDIF
