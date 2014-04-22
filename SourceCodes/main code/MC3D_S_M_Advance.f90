@@ -14,8 +14,8 @@ CONTAINS
     SUBROUTINE advance
     USE mod_heatcontrol
     IMPLICIT NONE
-    INTEGER*4:: i, j, k, bg, ed
-    REAL*8:: cellbdy(2, 3)
+    INTEGER(KIND=4):: i, j, k, bg, ed
+    REAL(KIND=8):: cellbdy(2, 3)
 
         DO k = 1, iNcell(3)
             DO j = 1, iNcell(2)
@@ -49,11 +49,11 @@ CONTAINS
 !======================================================================
     SUBROUTINE proc_advection(i0, j0, k0, cellbdy0, N, ph, nc)
     IMPLICIT NONE
-    INTEGER*4:: i0, j0, k0, hit, true, nc
-    INTEGER*4:: N, m, i, phcell(3), face(3), idxt(1)
-    REAL*8:: cellbdy0(2, 3), ph(iNprop, N)
-    REAL*8:: dtremain, dtused
-    REAL*8:: cellbdy(2, 3), vel(3), ds(3)
+    INTEGER(KIND=4):: i0, j0, k0, hit, true, nc
+    INTEGER(KIND=4):: N, m, i, phcell(3), face(3), idxt(1)
+    REAL(KIND=8):: cellbdy0(2, 3), ph(iNprop, N)
+    REAL(KIND=8):: dtremain, dtused
+    REAL(KIND=8):: cellbdy(2, 3), vel(3), ds(3)
     ! i0, j0, k0: the initial cell index of the phonons
     ! phcell: the cell index follows with the target phonon
     !------------------------------------------------------------------
@@ -132,8 +132,8 @@ CONTAINS
                     !--------------------------------------------------
                     ! Adjust whether the phonon still go through the
                     ! element surface to a neighbor element (true = 0),
-                    ! ,go through the boundary of computational domain 
-                    ! (true = -1), or will be reflected back to the 
+                    ! ,go through the boundary of computational domain
+                    ! (true = -1), or will be reflected back to the
                     ! same element (true = 1).
                     !--------------------------------------------------
                     IF ( ( face(hit) * vel(hit) ).gt.0 ) THEN
@@ -145,7 +145,7 @@ CONTAINS
                         ! true = 0, the phonon still go through the
                         ! element surface to a neighbor element.
                         ! proc_transmissivity will adjust whether the
-                        ! boundary of this element is a material/grain 
+                        ! boundary of this element is a material/grain
                         ! interface
                         !----------------------------------------------
                         IF ( true.eq.0 ) &
@@ -156,8 +156,8 @@ CONTAINS
                     ENDIF
 
                     !--------------------------------------------------
-                    ! If true is 1, it represents the direction is 
-                    ! changed.  The velocity vector therefore must be 
+                    ! If true is 1, it represents the direction is
+                    ! changed.  The velocity vector therefore must be
                     ! changed, too.
                     !--------------------------------------------------
                     IF ( true.eq.1 ) THEN
@@ -166,7 +166,7 @@ CONTAINS
                         vel(2) = vel(3) * DCOS( ph(5, m) )
                         vel(3) = vel(3) * DSIN( ph(5, m) )
                     ENDIF
-                    
+
                 ELSE
                     dtremain = 0d0
                 ENDIF
@@ -179,8 +179,8 @@ CONTAINS
 !======================================================================
     SUBROUTINE proc_intrinsicscattering( phcell, phm, dt1, true )
     IMPLICIT NONE
-    INTEGER*4:: phcell(3), true
-    REAL*8:: phm(iNprop), dt1, prob, rannum1(3)
+    INTEGER(KIND=4):: phcell(3), true
+    REAL(KIND=8):: phm(iNprop), dt1, prob, rannum1(3)
     !------------------------------------------------------------------
     ! This subroutine is used to adjust whether the intrinsic
     ! scattering occurs.  If occurs, the properties of the phonon will
@@ -222,12 +222,12 @@ CONTAINS
     SUBROUTINE proc_transmissivity( phcell, cellbdy, hit, &
                                                 face0, phm, vel, true)
     IMPLICIT NONE
-    INTEGER*4:: phcell(3), neighbor(3), hit, face0, true, i
-    REAL*8:: phm(iNprop), cellbdy(2,3), vel(3)
-    REAL*8:: ratio, dcosth2, dsinth2, rho1, rho2
-    REAL*8:: neighborE, neighborV
-    REAL*8:: tau21, tau12
-    REAL*8:: rannum1(2)
+    INTEGER(KIND=4):: phcell(3), neighbor(3), hit, face0, true, i
+    REAL(KIND=8):: phm(iNprop), cellbdy(2,3), vel(3)
+    REAL(KIND=8):: ratio, dcosth2, dsinth2, rho1, rho2
+    REAL(KIND=8):: neighborE, neighborV
+    REAL(KIND=8):: tau21, tau12
+    REAL(KIND=8):: rannum1(2)
     !------------------------------------------------------------------
     ! This subroutine is used to determine whether the phonon encounter
     ! a material/grain interface when it in going through a element's
@@ -240,7 +240,7 @@ CONTAINS
     ! face0: the surface which the target phonon will transmit through
     ! phm: the properties of target phonon
     ! vel: the velocity vector of the target phonon
-    ! true: the subroutine will return true = 1 if the element's 
+    ! true: the subroutine will return true = 1 if the element's
     !       boundary is a material/grain interface
     !------------------------------------------------------------------
 
@@ -250,7 +250,7 @@ CONTAINS
 
         IF ( iCmat(neighbor(1), neighbor(2), neighbor(3)).eq. &
                           iCmat(phcell(1), phcell(2), phcell(3)) ) THEN
-        
+
             IF ( hit.eq.1 ) CALL Compute_qflux(phcell,phm,vel)
             tau12 = 1d0
             phcell = neighbor
@@ -258,21 +258,21 @@ CONTAINS
                                               dLclen(hit) * DBLE(face0)
 
         ELSE ! hit the interface
-    
+
             CALL RANDOM_NUMBER( rannum1 )
             !----------------------------------------------------------
             ! Note:
             !   Use the temperature of current element and the material
-            !   of the neighbor element to calculate the properties of 
+            !   of the neighbor element to calculate the properties of
             !   the neighbor element which the phonon will go into.
             !----------------------------------------------------------
             CALL proc_Energy( &
                         iCmat(neighbor(1), neighbor(2), neighbor(3)), &
                         dTemp(phcell(1), phcell(2), phcell(3)), &
-                        neighborE ) 
+                        neighborE )
             CALL Etable( iCmat(neighbor(1), neighbor(2), neighbor(3)),&
                          4, neighborE, neighborV )
-                     
+
             IF ( rannum1(1).le.DPP(hit) ) THEN ! specular response
 
                 ratio = (dEcell(phcell(1), phcell(2), phcell(3)) * &
@@ -281,9 +281,9 @@ CONTAINS
                 dcosth2 = vel(hit) / phm(7) ! cos(theta1)
                 dsinth2 = DSQRT( (1d0 - dcosth2**2) * ratio )
                 tau12=0d0
-            
+
                 !------------------------------------------------------
-                ! If dsinth2 > 1, it represents total reflection. Then, 
+                ! If dsinth2 > 1, it represents total reflection. Then,
                 ! tau12 keeps 0. Otherwise if dsinth2 < 1, refraction
                 ! occurs.
                 !------------------------------------------------------
@@ -298,10 +298,10 @@ CONTAINS
                 ENDIF
 
                 !------------------------------------------------------
-                ! If the random number is smaller tau12, the specular 
-                ! transmission occurs and IAMM is applied. Otherwise 
-                ! specular reflection occurs.  Only the direction and 
-                ! group velocity will be changed during specular 
+                ! If the random number is smaller tau12, the specular
+                ! transmission occurs and IAMM is applied. Otherwise
+                ! specular reflection occurs.  Only the direction and
+                ! group velocity will be changed during specular
                 ! transmission.  And only the direction will be changed
                 ! during specular reflaction.
                 !------------------------------------------------------
@@ -312,7 +312,7 @@ CONTAINS
                     cellbdy(1:2, hit) = cellbdy(1:2, hit) + &
                                               dLclen(hit) * DBLE(face0)
                     phm(7) = dVunit( neighbor(1), neighbor(2), &
-                                                          neighbor(3) ) 
+                                                          neighbor(3) )
                     phcell = neighbor
                 ELSE
                     SELECTCASE(hit)
@@ -325,17 +325,17 @@ CONTAINS
                         phm(5) = M_PI_2 - phm(5)
                     ENDIF
                 ENDIF
-	    
+
             ELSE ! diffused response
                 tau12 = (neighborE * neighborV) / &
                         (dEcell(phcell(1), phcell(2), phcell(3)) * &
                         dVunit(phcell(1), phcell(2), phcell(3)) + &
                         neighborE * neighborV)
                 !------------------------------------------------------
-                ! If the random number is smaller tau12, the diffused 
-                ! transmission occurs and DMM is applied. Otherwise 
-                ! diffused reflection occurs.  The direction and 
-                ! group velocity will be changed during both diffused 
+                ! If the random number is smaller tau12, the diffused
+                ! transmission occurs and DMM is applied. Otherwise
+                ! diffused reflection occurs.  The direction and
+                ! group velocity will be changed during both diffused
                 ! transmission and reflaction.
                 !------------------------------------------------------
                 IF ( rannum1(2).le.tau12 ) THEN
@@ -351,9 +351,9 @@ CONTAINS
                     phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
                 ENDIF
             ENDIF
-	    
+
             true = 1
-        
+
         ENDIF
 
     END SUBROUTINE proc_transmissivity
@@ -362,8 +362,8 @@ CONTAINS
     SUBROUTINE proc_outdomain( phcell, cellbdy, hit, &
                                             face0, phm, dtremain, true)
     IMPLICIT NONE
-    INTEGER*4:: phcell(3), hit, face0, true, judge, j, k
-    REAL*8:: phm(iNprop), cellbdy(2,3), dtremain, tmp, rannum
+    INTEGER(KIND=4):: phcell(3), hit, face0, true, judge, j, k
+    REAL(KIND=8):: phm(iNprop), cellbdy(2,3), dtremain, tmp, rannum
     !------------------------------------------------------------------
     ! This subroutine adjust whether the target phonon will leave the
     ! computational domain.  If this occurs, it will modify some
@@ -376,15 +376,15 @@ CONTAINS
     !        1 represent positive surface, -1 otherwise
     ! phm: the properties of target phonon
     ! dtremail: the remaining drift time of target phonon
-    ! true: the subroutine will return 1, which represents the phonon 
-    !       has been reflected into the computational domain again. 
+    ! true: the subroutine will return 1, which represents the phonon
+    !       has been reflected into the computational domain again.
     !       Othereise, it will return -1, which represents the phonon
     !       has transmitted through the domain boundary.
     !
     ! P.S. In current version. The first and the last cells must belong
     !      to the same material.
     !------------------------------------------------------------------
-    
+
         CALL RANDOM_NUMBER( rannum )
 
         judge=0
@@ -393,9 +393,9 @@ CONTAINS
                                                               judge = 1
 
         IF ( ( phcell(hit).eq.1 ).and.( face0.lt.0 ) judge = -1
-        
+
         !--------------------------------------------------------------
-        ! The phonon will transmit through the domain 
+        ! The phonon will transmit through the domain
         ! boundary if judge.ne.0
         !--------------------------------------------------------------
         IF ( judge.ne.0 ) THEN
@@ -404,7 +404,7 @@ CONTAINS
             !----------------------------------------------------------
             ! option(hit):
             !       1: adiabatic BC (the phonon will be reflected)
-            !       2: periodic BC (the phonon will be moved to the 
+            !       2: periodic BC (the phonon will be moved to the
             !                       other side)
             !       3: thermal control BC
             !----------------------------------------------------------
@@ -414,7 +414,7 @@ CONTAINS
                 ! rannum > dPPPB represents diffused reflection.
                 !------------------------------------------------------
                 IF ( rannum.le.dPPB(hit) ) THEN
-                
+
                     SELECTCASE(hit)
                     CASE(1)
                         phm(4) = -phm(4)
@@ -424,9 +424,9 @@ CONTAINS
                     CASE(3)
                         phm(5) = M_PI_2 - phm(5)
                     END SELECT
-                    
+
                 ELSE
-                
+
                     CALL diffuseB( phm, hit, judge, -1 )
                     dEdiff(phcell(1), phcell(2), phcell(3)) = &
                             dEdiff(phcell(1), phcell(2), phcell(3)) + &
@@ -435,27 +435,27 @@ CONTAINS
                     phm(6) = dEunit(phcell(1), phcell(2), phcell(3))
                     phm(7) = dVunit(phcell(1), phcell(2), phcell(3))
                     phm(8) = iCmat(phcell(1), phcell(2), phcell(3))
-                    
+
                 ENDIF
 
                 true = 1
 
             CASE(2)
-            
+
                 IF ( judge.eq.1 ) THEN
-                
+
                     phm(hit) = 0d0
                     phcell(hit) = 1
                     cellbdy(1, hit) = 0d0
                     cellbdy(2, hit) = dLclen(hit)
-                    
+
                 ELSE IF ( judge.eq.-1 ) THEN
-                
+
                     phm(hit) = dLdomain(hit)
                     phcell(hit) = iNcell(hit)
                     cellbdy(2, hit) = dLdomain(hit)
                     cellbdy(1, hit) = dLdomain(hit) - dLclen(hit)
-                    
+
                 ENDIF
 
                 IF (true.eq.0) true=-1
@@ -464,47 +464,47 @@ CONTAINS
 
                 j = phcell(2)
                 k = phcell(3)
-                
+
                 !------------------------------------------------------
                 ! WAY_DIR = 1 represents periodic injection method
                 ! ......... 2 represents random injection method
-                ! 
-                ! The 3rd index of mlost: 1 represents the higher 
+                !
+                ! The 3rd index of mlost: 1 represents the higher
                 ! temperature surface (entry of heat flux), and
-                ! 2 represents lower temperature surface (heat flux 
-                ! outlet.) The phonon leaves the computational 
+                ! 2 represents lower temperature surface (heat flux
+                ! outlet.) The phonon leaves the computational
                 ! domain from outlet (inlet) surface of heat flux, will
                 ! be saved into the pool of inlet (outlet) surface.
                 !------------------------------------------------------
                 IF ( WAY_DIR.eq.1 ) THEN
-                
+
                     IF ( judge.eq.1 ) THEN
-                    
+
                         mlost(j, k, 1) = mlost(j, k, 1) + 1
                         IF ( mlost(j, k, 1).gt.iNmakeup ) &
                                                     mlost(j, k, 1) = 1
                         dPpool(1, mlost(j, k, 1), j, k, 1) = dtremain
                         dPpool(2:5, mlost(j,k,1), j, k, 1) = phm(2:5)
                         dPpool(6, mlost(j, k, 1), j, k, 1) = phm(8)
-                    
+
                     ELSE
-                    
+
                         mlost(j, k, 2) = mlost(j, k, 2) + 1
                         IF ( mlost(j, k, 2).gt.iNmakeup ) &
                                                     mlost(j, k, 2) = 1
                         dPpool(1, mlost(j, k, 2), j, k, 2) = dtremain
                         dPpool(2:5, mlost(j, k, 2), j, k, 2) = phm(2:5)
                         dPpool(6, mlost(j, k, 2), j, k, 2) = phm(8)
-                        
+
                     ENDIF
-                    
+
                 ENDIF
-                
+
                  !-----------------------------------------------------
                  ! WAY_HEAT = 1 represents constant heat flux
                  ! ...........2 represents constant temperature
                  !
-                 ! Constant heat flux (WAY_HEAT = 1) is not supported 
+                 ! Constant heat flux (WAY_HEAT = 1) is not supported
                  ! in current version. (Not completed)
                  !-----------------------------------------------------
                 IF ( WAY_HEAT.eq.1 ) THEN
@@ -527,7 +527,7 @@ CONTAINS
                 true = -1
 
             END SELECT
-            
+
         ENDIF
 
     END SUBROUTINE proc_outdomain
@@ -535,130 +535,176 @@ CONTAINS
 !======================================================================
     SUBROUTINE proc_createdelete
     IMPLICIT NONE
-    INTEGER*4:: i, j, k, m, s, bg, ed, true
-    REAL*8:: random1, tmp
-    REAL*8, ALLOCATABLE:: rannum(:, :), newphn(:, :)
+    INTEGER(KIND=4):: i, j, k, m, s, bg, ed, true
+    REAL(KIND=8):: random1, tmp
+    REAL(KIND=8), ALLOCATABLE:: rannum(:, :), newphn(:, :)
     !------------------------------------------------------------------
     ! This subroutine is used to create or delete phonons in elements
     ! to obey energy conservation.
     !------------------------------------------------------------------
-    
-    
+
         nadd = 0
         true = 0
-        
+
         DO k = 1, iNcell(3)
             DO j = 1, iNcell(2)
                 DO i = 1, iNcell(1)
+
                     tmp = 0.5d0 * dEunit(i, j, k)
+
                     IF ( dEdiff(i, j, k).ge.tmp ) THEN
-                        
+
                         nadd(i, j, k) = &
-                        INT( dEdiff(i, j, k) / dEunit(i, j, k) + 0.5d0)
-	                
+                                        INT( dEdiff(i, j, k) / &
+                                             dEunit(i, j, k) + 0.5d0 &
+                                           )
+
                         dEdiff(i, j, k) = &
                                           dEdiff(i, j, k) - &
                                           nadd(i, j, k) * &
                                           dEunit(i, j, k)
                         true = 1
+
                     ELSE IF ( dEdiff(i, j, k).lt.-tmp ) THEN
+
                         DO WHILE ( dEdiff(i, j, k).lt.-tmp )
-                            
+
                             CALL RANDOM_NUMBER( random1 )
-                            
+
                             s = iNnumcell(i, j, k)
                             bg = iNbgcell(i, j, k)
-                            
+
                             m = &
                               MIN( INT( bg + random1 * s + 1 ), bg + s)
-                            
+
                             IF ( phn(6, m).gt.0 ) THEN
+
                                 dEdiff(i, j, k) = dEdiff(i, j, k) + &
                                                   phn(6, m)
+
                                 phn(6, m) = 0
+
                                 nadd(i, j, k) = nadd(i, j, k) - 1
+
                             ENDIF
-                        
+
                         ENDDO
+
                         true = 1
-                    ENDIF
-                ENDDO
-            ENDDO
-        ENDDO
-    !------------------------------------------------------------------
-    ! 02:58 04/22/2014
-    !------------------------------------------------------------------
-    IF (true.eq.1) THEN
-        newiNph=iNph+SUM(nadd)
-        ALLOCATE( newphn(iNprop,newiNph) )
-        s=0
-        DO k=1,iNcell(3)
-            DO j=1,iNcell(2)
-                DO i=1,iNcell(1)
-                    bg=iNbgcell(i,j,k)+1
-                    ed=iNbgcell(i,j,k)+iNnumcell(i,j,k)
-                    IF (nadd(i,j,k).eq.0) THEN
-	                    newphn(:,s+1:s+iNnumcell(i,j,k))=phn(:,bg:ed)
-	                    s=s+iNnumcell(i,j,k)
-	                ELSE IF (nadd(i,j,k).gt.0) THEN
-	                    newphn(:,s+1:s+iNnumcell(i,j,k))=phn(:,bg:ed)
-	                    s=s+iNnumcell(i,j,k)
-                        ALLOCATE( rannum(nadd(i,j,k),5) )
-	                    CALL random_number(rannum)
-	                    newphn(1,s+1:s+nadd(i,j,k))=(DBLE(i-1)+rannum(:,1))*dLclen(1)
-		                newphn(2,s+1:s+nadd(i,j,k))=(DBLE(j-1)+rannum(:,2))*dLclen(2)
-		                newphn(3,s+1:s+nadd(i,j,k))=(DBLE(k-1)+rannum(:,3))*dLclen(3)
-	                    newphn(4,s+1:s+nadd(i,j,k))=2d0*rannum(:,4)-1d0
-		                newphn(5,s+1:s+nadd(i,j,k))=M_PI_2*rannum(:,5)
-	                    newphn(6,s+1:s+nadd(i,j,k))=dEunit(i,j,k)
-                        newphn(7,s+1:s+nadd(i,j,k))=dVunit(i,j,k)
-		                newphn(8,s+1:s+nadd(i,j,k))=iCmat(i,j,k)
-	                    s=s+nadd(i,j,k)
-		                DEALLOCATE( rannum )
-                    ELSE IF (nadd(i,j,k).lt.0) THEN
-                        DO m=bg,ed
-	                        IF (phn(6,m).gt.0) THEN
-		                        s=s+1
-	                            newphn(:,s)=phn(:,m)
-	                        ENDIF
-	                    ENDDO
+
                     ENDIF
                 ENDDO
             ENDDO
         ENDDO
 
-        DEALLOCATE( phn )
-        ALLOCATE( phn(iNprop,newiNph) )
-        iNph=newiNph
-        phn = newphn
-        DEALLOCATE( newphn )
-!----------------------------
-        iNbgcell=0
-        m=0
-        DO k=1,iNcell(3)
-            DO j=1,iNcell(2)
-                DO i=1,iNcell(1)
-                    iNbgcell(i,j,k)=m
-                    iNnumcell(i,j,k)=iNnumcell(i,j,k)+nadd(i,j,k)
-                    m=m+iNnumcell(i,j,k)
+        IF ( true.eq.1 ) THEN
+
+            newiNph = iNph + SUM( nadd )
+
+            ALLOCATE( newphn(iNprop, newiNph) )
+
+            s = 0
+
+            DO k = 1, iNcell(3)
+                DO j = 1, iNcell(2)
+                    DO i = 1, iNcell(1)
+
+                        bg = iNbgcell(i, j, k) + 1
+                        ed = iNbgcell(i, j, k) + iNnumcell(i, j, k)
+
+                        IF ( nadd(i,j,k).eq.0 ) THEN
+
+                            newphn(:, s+1:s+iNnumcell(i, j, k)) = &
+                                                          phn(:, bg:ed)
+
+                            s = s + iNnumcell(i, j, k)
+
+                        ELSE IF ( nadd(i,j,k ).gt.0) THEN
+
+                            newphn(:, s+1:s+iNnumcell(i, j, k)) = &
+                                                          phn(:, bg:ed)
+
+                            s = s + iNnumcell(i, j, k)
+
+                            ALLOCATE( rannum(nadd(i,j,k), 5) )
+                            CALL RANDOM_NUMBER(rannum)
+
+                            newphn(1, s+1:s+nadd(i, j, k)) = &
+                               (DBLE( i-1 ) + rannum(:, 1)) * dLclen(1)
+                            newphn(2, s+1:s+nadd(i, j, k)) = &
+                               (DBLE( j-1 ) + rannum(:, 2)) * dLclen(2)
+                            newphn(3, s+1:s+nadd(i, j, k)) = &
+                               (DBLE( k-1 ) + rannum(:, 3)) * dLclen(3)
+                            newphn(4, s+1:s+nadd(i, j, k)) = &
+                                               2d0 * rannum(:, 4) - 1d0
+                            newphn(5, s+1:s+nadd(i, j, k)) = &
+                                                  M_PI_2 * rannum(:, 5)
+                            newphn(6, s+1:s+nadd(i, j, k)) = &
+                                                        dEunit(i, j, k)
+                            newphn(7, s+1:s+nadd(i, j, k)) = &
+                                                        dVunit(i, j, k)
+                            newphn(8, s+1:s+nadd(i, j, k)) = &
+                                                         iCmat(i, j, k)
+
+                            s = s + nadd(i, j, k)
+
+                            DEALLOCATE( rannum )
+
+                        ELSE IF ( nadd(i, j, k).lt.0 ) THEN
+
+                            DO m = bg, ed
+
+                                IF ( phn(6, m).gt.0 ) THEN
+
+                                    s = s + 1
+                                    newphn(:, s) = phn(:, m)
+
+                                ENDIF
+
+                            ENDDO
+
+                        ENDIF
+
+                    ENDDO
                 ENDDO
             ENDDO
-        ENDDO
-    ENDIF
 
-END SUBROUTINE proc_createdelete
+            DEALLOCATE( phn )
+            ALLOCATE( phn(iNprop, newiNph) )
+            iNph = newiNph
+            phn = newphn
+            DEALLOCATE( newphn )
+
+            iNbgcell = 0
+            m = 0
+            DO k = 1, iNcell(3)
+                DO j = 1, iNcell(2)
+                    DO i = 1, iNcell(1)
+
+                        iNbgcell(i, j, k) = m
+                        iNnumcell(i, j, k) = iNnumcell(i, j, k) + &
+                                                          nadd(i, j, k)
+
+                        m = m + iNnumcell(i, j, k)
+
+                    ENDDO
+                ENDDO
+            ENDDO
+        ENDIF
+
+    END SUBROUTINE proc_createdelete
 !======================================================================
 !======================================================================
     SUBROUTINE Compute_qflux( phcell, phm, vel)
     IMPLICIT NONE
-    INTEGER*4:: phcell(3)
-    REAL*8:: phm(7), vel(3)
+    INTEGER(KIND=4):: phcell(3)
+    REAL(KIND=8):: phm(7), vel(3)
     !------------------------------------------------------------------
     ! This subroutine will calculate the heat pass through the middle
     ! plane of the computational domain in x-direction.
     !------------------------------------------------------------------
 
-        IF ( (phcell(1).eq.(iNcell(1)/2)) .and. (vel(1).gt.0d0) ) THEN 
+        IF ( (phcell(1).eq.(iNcell(1)/2)) .and. (vel(1).gt.0d0) ) THEN
             qflow(phcell(2), phcell(3)) = qflow(phcell(2), phcell(3)) &
                                           + phm(6)
         ELSE IF ( (phcell(1).eq.iNcell(1)/2+1) .and. &

@@ -1,5 +1,5 @@
 !**********************************************************************
-!   HEADING: MC3D - Structured Solver: I/O MODULE
+!   HEADING: MC3D - Structured Solver: I/O Module
 !   AUTHOR: MJ Huang, PY Chuang
 !   PURPOSE: This module handles the input/output processes.
 !   DATE: 2009.7.10
@@ -8,7 +8,7 @@ MODULE mod_IO
 USE mod_VARIABLES
 USE mod_ROUTINES
 IMPLICIT NONE
-!#######################################################################
+!######################################################################
 CONTAINS
 !======================================================================
     SUBROUTINE readtable
@@ -45,7 +45,7 @@ CONTAINS
 !======================================================================
     SUBROUTINE initialize(NorR)
     IMPLICIT NONE
-    INTEGER*4:: idx, NorR
+    INTEGER(KIND=4):: idx, NorR
     ! DPP=specular fraction of internal interfaces
     ! DPPB=specular fraction of computational boundaries
 
@@ -105,7 +105,11 @@ CONTAINS
         ALLOCATE( dVunit(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( MFP(iNcell(1), iNcell(2), iNcell(3)) )
         ALLOCATE( nadd(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( Tz(iNcell(1), iNcell(2), iNcell(3)) )
+        ALLOCATE( Ez(iNcell(1), iNcell(2), iNcell(3)) )
 
+        Tz = 0d0
+        Ez = 0d0
         dArea = dLclen(2) * dLclen(3)
         dVolume = dLclen(1) * dArea
 
@@ -115,12 +119,18 @@ CONTAINS
             ALLOCATE( dVinject(iNcell(2), iNcell(3), 2, 2) )
             ALLOCATE( iNemit(iNcell(2), iNcell(3), 2) )
             ALLOCATE( qflow(iNcell(2), iNcell(3)) )
+            ALLOCATE( qflowL(iNcell(2), iNcell(3)) )
+            ALLOCATE( qflowR(iNcell(2), iNcell(3)) )
             ALLOCATE( qctrl0(iNcell(2), iNcell(3)) )
             ALLOCATE( dEheatflux(iNcell(2), iNcell(3), 2) )
             ALLOCATE( qctrl(iNcell(2), iNcell(3)) )
-            
+
+            qflow = 0d0
+            qflowL = 0d0
+            qflowR = 0d0
+
             dElost = 0d0
-            
+
             SELECTCASE(WAY_HEAT)
             CASE(1)
             ! phonons injected at specified heat flux
@@ -134,8 +144,8 @@ CONTAINS
             CASE(2)
             ! phonons injected at specified temperatures
             !==========================================================
-                dEheatflux(:,:,1)=TEMP_HEAT(1)
-                dEheatflux(:,:,2)=TEMP_HEAT(2)
+                dEheatflux(:,:,1) = TEMP_HEAT(1)
+                dEheatflux(:,:,2) = TEMP_HEAT(2)
 
                 Call proc_BC( dEheatflux(1:iNcell(2), 1:iNcell(3), 1),&
                               dEheatflux(1:iNcell(2), 1:iNcell(3), 2) )
@@ -167,26 +177,25 @@ CONTAINS
 
     END SUBROUTINE initialize
 !============================================================================
-SUBROUTINE restart
-IMPLICIT NONE
+    SUBROUTINE restart
+    IMPLICIT NONE
 
-WRITE(LW3,*) bundle,dt,time,iNcell
-WRITE(LW3,*) dLdomain,dLclen,option,DPP,DPPB
-WRITE(LW3,*) dEheatflux0/(dArea*dt*DBLE(iNcell(2)*iNcell(3)))
-WRITE(LW3,*) iNprop,iNph
-WRITE(LW3,*) iCmat
-WRITE(LW3,*) phn
-WRITE(LW3,*) dEdiff
-IF (WAY_DIR.eq.1) THEN
-   WRITE(LW3,*) iNmakeup
-   WRITE(LW3,*) dPpool
-ENDIF
-IF (WAY_HEAT.eq.1) THEN
-   WRITE(LW3,*) sumQ
-   WRITE(LW3,*) qctrl0
-   WRITE(LW3,*) abc
-ENDIF
+        OPEN( LW1, FILE = restartfilename )
+        WRITE(LW1, *) dt
+        WRITE(LW1, *) iter
+        WRITE(LW1, *) dLdomain
+        WRITE(LW1, *) iNcell
+        WRITE(LW1, *) dLclen
+        WRITE(LW1, *) bundle
+        WRITE(LW1, *) iNprop, iNph
+        WRITE(LW1, *) iNmakeup
+        WRITE(LW1, *) iCmat
+        WRITE(LW1, *) phn
+        WRITE(LW1, *) dEdiff
+        WRITE(LW1, *) dPpool
+        WRITE(LW1, *) mlost
+        CLOSE(LW1)
 
-END SUBROUTINE restart
+    END SUBROUTINE restart
 !============================================================================
 END MODULE mod_IO

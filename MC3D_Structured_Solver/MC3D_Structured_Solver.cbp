@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="MC3D_Structured_Solver" />
+		<Option pch_mode="2" />
+		<Option compiler="ifclin" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/MC3D_Structured_Solver" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="ifclin" />
+				<Compiler>
+					<Add option="-traceback" />
+					<Add option="-warn stderrors" />
+					<Add option="-warn errors" />
+					<Add option="-warn all" />
+					<Add option="-debug full" />
+				</Compiler>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/MC3D_Structured_Solver" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="ifclin" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+			</Target>
+		</Build>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_Advance.f90">
+			<Option weight="99" />
+		</Unit>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_Heatcontrol.f90">
+			<Option weight="98" />
+		</Unit>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_IO.f90">
+			<Option weight="2" />
+		</Unit>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_Main.f90">
+			<Option weight="100" />
+		</Unit>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_Routines.f90">
+			<Option weight="1" />
+		</Unit>
+		<Unit filename="../SourceCodes/main code/MC3D_S_M_Variables.f90">
+			<Option weight="0" />
+		</Unit>
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

@@ -7,7 +7,7 @@
 PROGRAM initial3D
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4:: NperCell
+INTEGER(KIND=4):: NperCell
 
     WRITE(*,*) 'INPUT THE CASE NAME(NO .''TXT'', NO ''_GRIDFILE''): '
     READ(*,"(A72)") casename
@@ -114,7 +114,7 @@ END SUBROUTINE readtable
 SUBROUTINE domain(NperCell)
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4 :: NperCell
+INTEGER(KIND=4) :: NperCell
 
     WRITE(*, *) 'Enter the dimension Lx, Ly, Lz of the model:'
     READ(*, *) dLdomain
@@ -159,9 +159,9 @@ END SUBROUTINE temperature
 SUBROUTINE properties(NperCell)
 USE mod_VARIABLES
 IMPLICIT NONE
-REAL*8 :: Eng0(2), N0(2)
-INTEGER*4 :: NperCell, i, j, k, m, m_min(2), s
-REAL*8,ALLOCATABLE::rannum(:,:)
+REAL(KIND=8) :: Eng0(2), N0(2)
+INTEGER(KIND=4) :: NperCell, i, j, k, m, m_min(2), s
+REAL(KIND=8),ALLOCATABLE::rannum(:,:)
 
     WRITE(*, *) "Assigning Properties to Each Mesh..."
 
@@ -206,7 +206,10 @@ REAL*8,ALLOCATABLE::rannum(:,:)
             DO i = 1, iNcell(1)
                 s = iCmat(i, j, k)
                 iNnumcell(i, j, k) = INT( dEunit(i, j, k) * dVolume / bundle(s) + 0.5d0 )
-                IF ( iNnumcell(i, j, k).lt.1 ) PAUSE
+                IF ( iNnumcell(i, j, k).lt.1 ) THEN
+                    WRITE(*, *) 'PAUSE'
+                    READ(*, *)
+                ENDIF
                 dEdiff(i, j, k) = &
                     dEcell(i, j, k) * dVolume - &
                     DBLE(m) * bundle(s) * dEcell(i, j, k) / dEunit(i, j, k)
@@ -239,7 +242,10 @@ REAL*8,ALLOCATABLE::rannum(:,:)
         ENDDO
     ENDDO
 
-    IF ( iNph.ne.SUM(iNnumcell) ) PAUSE
+    IF ( iNph.ne.SUM(iNnumcell) ) THEN
+        WRITE(*, *) 'PAUSE'
+        READ(*, *)
+    ENDIF
 
     WRITE(*, *) "   Model Check:"
     WRITE(*, *) "   dt = ", dt
@@ -297,8 +303,8 @@ END SUBROUTINE output
 SUBROUTINE energy(nc,T0,Eout)
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4 :: nc
-REAL*8 :: T0, Eout, E1, E2, T1, T2, Tout
+INTEGER(KIND=4) :: nc
+REAL(KIND=8) :: T0, Eout, E1, E2, T1, T2, Tout
 
     IF (nc.eq.1) THEN
         E1 = Ge_table(3, 1)
@@ -335,8 +341,8 @@ END SUBROUTINE energy
 SUBROUTINE Etable(mat,idx,E,out)
 USE mod_VARIABLES
 IMPLICIT NONE
-INTEGER*4::mat,idx,iU
-REAL*8::E,out,out_a,out_b
+INTEGER(KIND=4)::mat,idx,iU
+REAL(KIND=8)::E,out,out_a,out_b
 !!mat:
 !!   1:Ge, mat=2:Si
 !!idx:
